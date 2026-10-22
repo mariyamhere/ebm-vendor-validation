@@ -1,0 +1,14 @@
+{
+  "intake_email": "the.gmail.address.n8n.watches@gmail.com",
+  "approver_email": "approver@example.com",
+  "spreadsheet_id": "paste from the Apps Script log",
+  "form_responses_gid": "paste from the Apps Script log",
+  "grc_doc_id": "paste from the Apps Script log",
+  "form_prefill_url": "paste from the Apps Script log",
+  "review_url": "https://where-you-host-the-vendor-desk/",
+  "company_short": "EBM",
+  "desk_name": "Vendor Desk, Procurement",
+  "triage_model": "google/gemma-4-31b-it:free",
+  "assess_model": "google/gemma-4-31b-it:free",
+  "fallback_model": ""
+}

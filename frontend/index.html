@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vendor Validation System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy: #343579;
+  --navy-deep: #28316a;
+  --sky: #4ec3ec;
+  --sky-soft: #eef8fd;
+  --ink: #212529;
+  --body: #4b4747;
+  --muted: #7d7878;
+  --line: #ece7e3;
+  --warm: #f7f4f2;
+  --good: #18604d;
+  --good-soft: #dafcf5;
+  --check: #7a5b00;
+  --check-soft: #fff4c7;
+  --no: #c42e1c;
+  --no-soft: #fdeeec;
+  --font: "Figtree", "Euclid Circular A", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: #fff; color: var(--ink); font: 400 18px/1.6 var(--font); -webkit-font-smoothing: antialiased; }
+a { color: var(--navy); }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--sky); outline-offset: 3px; border-radius: 8px; }
+
+header { border-bottom: 1px solid var(--line); }
+.bar { max-width: 720px; margin: 0 auto; padding: 16px 24px; display: flex; align-items: center; gap: 14px; }
+.home { display: flex; align-items: center; gap: 12px; color: var(--navy); background: none; border: 0; padding: 0; cursor: pointer; }
+.home b { font-size: 24px; letter-spacing: .02em; }
+.home i { width: 1.5px; height: 28px; background: var(--navy); }
+.home span { font-size: 18px; font-weight: 600; white-space: nowrap; text-align: left; }
+.settings { margin-left: auto; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+
+main { max-width: 720px; margin: 0 auto; padding: 48px 24px 96px; }
+h1 { font-size: 40px; line-height: 1.15; font-weight: 700; color: var(--navy); margin: 0; letter-spacing: -.02em; }
+.subhead { font-size: 26px; line-height: 1.3; font-weight: 600; color: var(--ink); margin: 18px 0 0; }
+.lead { font-size: 20px; color: var(--body); margin: 8px 0 0; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; border-radius: 999px; padding: 16px 32px; font-weight: 600; font-size: 19px; cursor: pointer; border: 2px solid var(--navy); background: var(--navy); color: #fff; }
+.btn:hover { background: var(--navy-deep); }
+.btn.light { background: #fff; color: var(--navy); }
+.btn.light:hover { background: var(--sky-soft); }
+.btn:disabled { opacity: .5; cursor: progress; }
+.link { background: none; border: 0; padding: 0; color: var(--navy); font-weight: 600; cursor: pointer; font-size: 17px; text-decoration: underline; text-underline-offset: 4px; }
+.link.grey { color: var(--muted); font-weight: 500; }
+
+.label { display: inline-block; font-size: 15px; font-weight: 700; padding: 4px 14px; border-radius: 999px; white-space: nowrap; }
+.label.good { background: var(--good-soft); color: var(--good); }
+.label.check { background: var(--check-soft); color: var(--check); }
+.label.no { background: var(--no-soft); color: var(--no); }
+.label.done { background: var(--warm); color: var(--body); }
+
+/* ---------- home ---------- */
+.start { margin-top: 32px; }
+.list { margin-top: 48px; }
+.card { display: block; width: 100%; text-align: left; background: #fff; border: 2px solid var(--line); border-radius: 18px; padding: 20px 24px; cursor: pointer; margin-bottom: 14px; }
+.card:hover { border-color: var(--navy); }
+.card .top { display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; }
+.card .name { font-size: 21px; font-weight: 600; color: var(--navy); }
+.card .why { margin-top: 6px; color: var(--body); font-size: 17px; }
+.foot { margin-top: 36px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+.note-sample { font-size: 16px; color: var(--muted); }
+
+/* ---------- review ---------- */
+.crumbs { display: flex; justify-content: space-between; align-items: center; font-size: 17px; color: var(--muted); }
+.steps { display: flex; gap: 8px; margin: 28px 0 40px; }
+.steps button { flex: 1; text-align: left; background: none; border: 0; border-top: 5px solid var(--line); padding: 10px 0 0; cursor: pointer; font-size: 17px; color: var(--muted); }
+.steps button.past { border-color: #b7dff0; color: var(--body); }
+.steps button.now { border-color: var(--navy); color: var(--navy); font-weight: 700; }
+.name-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+.what-they-do { font-size: 19px; color: var(--body); margin-top: 8px; }
+.box { margin-top: 28px; padding: 26px 28px; border-radius: 20px; background: var(--sky-soft); }
+.box.no { background: var(--no-soft); }
+.box h2 { font-size: 22px; margin: 0 0 8px; color: var(--navy); }
+.box.no h2 { color: var(--no); }
+.box p { margin: 0; font-size: 19px; }
+.box ul { margin: 0; padding-left: 22px; font-size: 19px; }
+.score-line { margin-top: 28px; font-size: 19px; color: var(--body); }
+.score-line b { font-size: 34px; color: var(--navy); }
+.actions { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; margin-top: 40px; }
+
+h2.sec { font-size: 24px; color: var(--navy); margin: 0 0 14px; }
+.sec-wrap + .sec-wrap { margin-top: 44px; }
+.check-list { margin: 0; padding: 0; list-style: none; }
+.check-list li { padding: 14px 0; border-top: 1px solid var(--line); font-size: 18px; }
+.check-list li:last-child { border-bottom: 1px solid var(--line); }
+.mark { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+.mark .t { font-weight: 600; }
+.mark .w { font-weight: 700; font-size: 16px; white-space: nowrap; }
+.mark .w.good { color: var(--good); }
+.mark .w.ok { color: var(--check); }
+.mark .w.weak { color: var(--no); }
+.small { font-size: 16px; color: var(--body); margin-top: 2px; }
+details summary { cursor: pointer; font-size: 19px; font-weight: 600; color: var(--navy); }
+dl { margin: 16px 0 0; }
+dt { font-size: 16px; color: var(--muted); margin-top: 12px; }
+dd { margin: 0; white-space: pre-line; }
+
+.choices { display: grid; gap: 14px; }
+.choice { display: flex; gap: 16px; align-items: center; width: 100%; text-align: left; background: #fff; border: 2px solid var(--line); border-radius: 18px; padding: 20px 22px; cursor: pointer; }
+.choice:hover { border-color: #b7dff0; }
+.choice .dot { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #cfc8c3; flex: none; }
+.choice[aria-checked="true"] { border-color: var(--navy); background: var(--sky-soft); }
+.choice[aria-checked="true"] .dot { border: 8px solid var(--navy); }
+.choice .t { font-size: 20px; font-weight: 600; display: block; }
+.choice .d { font-size: 16px; color: var(--body); }
+.ours { font-size: 14px; font-weight: 700; color: var(--good); background: var(--good-soft); padding: 2px 10px; border-radius: 999px; margin-left: 8px; vertical-align: 2px; }
+.write { margin-top: 30px; }
+.write label { display: block; font-size: 20px; font-weight: 600; }
+.write .hint { font-size: 16px; color: var(--muted); margin: 2px 0 10px; }
+.write textarea { width: 100%; min-height: 140px; border: 2px solid var(--line); border-radius: 14px; padding: 14px 16px; resize: vertical; font-size: 18px; }
+.write textarea:focus { border-color: var(--navy); outline: none; }
+.tick { display: flex; gap: 10px; align-items: center; margin-top: 14px; font-size: 17px; }
+.tick input { width: 22px; height: 22px; accent-color: var(--navy); }
+.err { color: var(--no); font-size: 17px; margin-top: 14px; font-weight: 500; }
+.decided { padding: 26px 28px; border-radius: 20px; background: var(--warm); font-size: 19px; }
+
+.site-foot { border-top: 1px solid var(--line); text-align: center; color: var(--muted); font-size: 15px; padding: 22px 16px 28px; }
+
+dialog { border: 0; border-radius: 22px; padding: 30px; width: min(480px, calc(100vw - 32px)); box-shadow: 0 24px 60px -20px rgba(40,49,106,.45); }
+dialog::backdrop { background: rgba(40,49,106,.3); }
+dialog h2 { font-size: 24px; color: var(--navy); margin: 0 0 6px; }
+dialog p { margin: 0 0 6px; color: var(--body); font-size: 17px; }
+dialog label { display: block; font-size: 16px; font-weight: 600; margin: 16px 0 6px; }
+dialog input { width: 100%; border: 2px solid var(--line); border-radius: 12px; padding: 11px 14px; font-size: 17px; }
+dialog .btns { display: flex; justify-content: flex-end; gap: 20px; align-items: center; margin-top: 26px; }
+dialog .tech { margin-top: 18px; }
+dialog .tech summary { font-size: 16px; color: var(--muted); font-weight: 500; }
+
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); opacity: 0; background: var(--navy); color: #fff; padding: 16px 26px; border-radius: 16px; font-size: 18px; transition: .25s; pointer-events: none; max-width: calc(100vw - 32px); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 640px) {
+  body { font-size: 17px; }
+  main { padding: 32px 18px 80px; }
+  .bar { padding: 14px 18px; }
+  .home { gap: 8px; }
+  .home b { font-size: 19px; }
+  .home span { font-size: 15px; }
+  .home svg { width: 24px; }
+  h1 { font-size: 31px; }
+  .lead { font-size: 18px; }
+  .subhead { font-size: 22px; }
+  .btn { width: 100%; }
+  .box { padding: 20px; }
+  .steps button { font-size: 15px; }
+  .toast { left: 16px; right: 16px; transform: translateY(20px); max-width: none; }
+  .toast.show { transform: none; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <button class="home" type="button" data-home>
+      <svg width="30" height="24" viewBox="0 0 30 24" aria-hidden="true"><circle cx="18" cy="5" r="4.2" fill="#4ec3ec"/><path d="M2 9c5 0 9 2 11 6 2-4 6-6 11-6-3 6-7 11-11 14C9 20 5 15 2 9z" fill="#343579"/></svg>
+      <b>EBM</b>
+    </button>
+    <button class="settings" type="button" data-settings>Settings</button>
+  </div>
+</header>
+
+<main id="app"><p class="lead">Loading…</p></main>
+
+<footer class="site-foot">Powered by JBS Global</footer>
+
+<dialog id="settings">
+  <form method="dialog" id="settingsForm">
+    <h2>Your details</h2>
+    <p id="settingsHint">Your name is saved with every decision you make.</p>
+    <label for="sName">Your name</label>
+    <input id="sName" autocomplete="name">
+    <details class="tech">
+      <summary>Connection (set up by IT)</summary>
+      <label for="sBase">Webhook address</label>
+      <input id="sBase" placeholder="https://yourteam.app.n8n.cloud/webhook" autocomplete="off">
+      <label for="sKey">Access key</label>
+      <input id="sKey" type="password" autocomplete="off">
+    </details>
+    <div class="btns">
+      <button class="link grey" value="demo" type="submit">Use practice data</button>
+      <button class="btn" value="save" type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ======================================================================
+   Practice data, shown until IT connects the page to n8n.
+   Written the way the model is asked to write: plain words, no rule codes.
+   ====================================================================== */
+const SAMPLE = [
+  {
+    vendor_id: 'EBM-V-1EJFWS6', company_name: 'Al-Noor Packaging', contact_name: 'Imran Siddiqui', contact_email: 'imran@alnoorpack.com.pk',
+    category: 'Packaging (food contact)', city: 'Lahore', years_in_business: '18', score: 88, tier: 'A', blocked: false,
+    recommendation: 'approve_with_conditions', status: 'pending_review',
+    summary: 'A well-run packaging company with all the food safety certificates we ask for. They can make far more than we need. We already have three packaging suppliers, so only take them on if their price is better.',
+    criteria: [
+      { id: 'C1', score: 5, evidence: 'All tax and company registration numbers given and they match.' },
+      { id: 'C2', score: 5, evidence: 'Holds the two strongest food safety certificates, valid until 2027.' },
+      { id: 'C3', score: 5, evidence: 'In business for 18 years with healthy yearly sales.' },
+      { id: 'C4', score: 5, evidence: 'Can make more than three times what we need each month.' },
+      { id: 'C5', score: 5, evidence: 'Passed a workplace audit this year and has an environmental certificate.' },
+      { id: 'C6', score: 3, evidence: 'Has a proper website. Nothing good or bad in the news.' },
+      { id: 'C7', score: 4, evidence: 'Offers 60 days to pay. Gave client names, not yet called.' },
+    ],
+    knockouts: [], red_flags: ['We already have three packaging suppliers. Only add them if their price or quality is clearly better.'],
+    web_findings: [{ title: 'Their certificates page', url: 'https://alnoorpack.com.pk/certifications', takeaway: 'Certificate numbers on their website match what they told us.' }],
+    questions: ['Copies of their food safety certificates', 'Two client references with phone numbers', 'Their price list'],
+    form: { 'What they supply': 'Printed wrappers, cartons and shipping boxes', Owners: 'Imran Siddiqui, Ayesha Siddiqui', 'Monthly capacity': '400 tonnes of wrapper film, 6 million cartons', 'Main clients': 'Riverbend Foods, Mehran Snacks, Crescent Dairies', 'Payment terms': '60 days', 'Related to anyone at EBM?': 'No', 'Any court cases or bans?': 'No' },
+  },
+  {
+    vendor_id: 'EBM-V-1X9K5C8', company_name: 'SwiftHaul Logistics', contact_name: 'Rabia Khan', contact_email: 'rabia@swifthaul.pk',
+    category: 'Transport', city: 'Karachi', years_in_business: '9', score: 71, tier: 'B', blocked: false,
+    recommendation: 'approve_with_conditions', status: 'pending_review',
+    summary: 'A trucking company with its own fleet on the Karachi to Lahore route, where we need another carrier. One of their owners has a cousin working in our Port Qasim warehouse. They told us about it, which is fine, but that person should not choose which carrier gets our loads.',
+    criteria: [
+      { id: 'C1', score: 5, evidence: 'All registration numbers given.' },
+      { id: 'C2', score: 3, evidence: 'Has a quality certificate. Food safety certificates are not needed for transport.' },
+      { id: 'C3', score: 3, evidence: 'Nine years in business, medium-sized.' },
+      { id: 'C4', score: 5, evidence: 'Around 400 trips a month. We need about 90.' },
+      { id: 'C5', score: 3, evidence: 'Has an environmental certificate, no workplace audit.' },
+      { id: 'C6', score: 3, evidence: 'Has a website. Nothing bad found.' },
+      { id: 'C7', score: 3, evidence: '30 days to pay. Named three clients.' },
+    ],
+    knockouts: [], red_flags: ["An owner's cousin works in our Port Qasim warehouse. Ask them to sign a form declaring this."],
+    web_findings: [{ title: 'SwiftHaul website', url: 'https://swifthaul.pk', takeaway: 'Says they have 140 trucks, same as they told us.' }],
+    questions: ['List of their trucks', 'Proof of insurance for goods on the road', 'Signed form about the family link at EBM'],
+    form: { 'What they supply': 'Trucking from Karachi to Lahore, 2 warehouses', Owners: 'Omar Farooq, Rabia Khan', 'Monthly capacity': '140 trucks, about 400 trips', 'Payment terms': '30 days', 'Related to anyone at EBM?': "Yes: Omar Farooq's cousin Bilal works in our Port Qasim warehouse", 'Any court cases or bans?': 'No' },
+  },
+  {
+    vendor_id: 'EBM-V-0USU0UC', company_name: 'Chenab Flour Mills', contact_name: 'Khalid Javed', contact_email: 'khalid@chenabflour.pk',
+    category: 'Ingredients', city: 'Faisalabad', years_in_business: '25', score: 81, tier: 'Blocked', blocked: true,
+    recommendation: 'send_back', status: 'pending_review',
+    summary: 'A large, experienced flour mill in the area where we want another supplier. The only problem is that their Halal certificate ran out in August. Their renewal check is on 12 November, so ask them to send the new certificate.',
+    criteria: [
+      { id: 'C1', score: 5, evidence: 'All registration numbers given.' },
+      { id: 'C2', score: 4, evidence: 'Food safety certificates valid until May 2027.' },
+      { id: 'C3', score: 5, evidence: '25 years in business, large yearly sales.' },
+      { id: 'C4', score: 4, evidence: 'Can supply 2,500 tonnes a month. We need 1,800.' },
+      { id: 'C5', score: 2, evidence: 'No workplace or environmental certificates.' },
+      { id: 'C6', score: 3, evidence: 'Listed in a local business directory. Nothing bad found.' },
+      { id: 'C7', score: 3, evidence: '30 days to pay.' },
+    ],
+    knockouts: [{ reason: 'Their Halal certificate expired on 31 August 2026. We cannot buy ingredients without a valid one.' }],
+    red_flags: [], web_findings: [{ title: 'Faisalabad business directory', url: '', takeaway: 'Listed as a flour mill since 2003.' }],
+    questions: ['Their new Halal certificate once renewed', 'Recent lab test results for their flour'],
+    form: { 'What they supply': 'Flour and semolina for biscuits', Owners: 'Javed Iqbal, Khalid Javed', Certificates: 'Food safety valid to May 2027. Halal expired 31 Aug 2026, renewal check on 12 Nov 2026.', 'Monthly capacity': '2,500 tonnes', 'Related to anyone at EBM?': 'No', 'Any court cases or bans?': 'No' },
+  },
+  {
+    vendor_id: 'EBM-V-1KOL3YA', company_name: 'Sunrise Edible Oils', contact_name: 'Saad Tariq', contact_email: 'saad@sunriseedibleoils.pk',
+    category: 'Ingredients', city: 'Sheikhupura', years_in_business: '3', score: 58, tier: 'Blocked', blocked: true,
+    recommendation: 'reject', status: 'pending_review',
+    summary: 'One of their owners, Tariq Mehmood Butt, ran a company we banned in 2024 for selling mixed, impure cooking fat. That ban covers any company he runs until 2029. They also said "No" when asked about past bans. We suggest rejecting them.',
+    criteria: [
+      { id: 'C1', score: 5, evidence: 'All registration numbers given.' },
+      { id: 'C2', score: 4, evidence: 'Has a food safety certificate.' },
+      { id: 'C3', score: 2, evidence: 'Only 3 years in business.' },
+      { id: 'C4', score: 5, evidence: 'Can supply twice what we need.' },
+      { id: 'C5', score: 1, evidence: 'Nothing on record.' },
+      { id: 'C6', score: 0, evidence: 'An owner is linked to a company we banned.' },
+      { id: 'C7', score: 2, evidence: 'Would not name their clients.' },
+    ],
+    knockouts: [{ reason: 'An owner, Tariq Mehmood Butt, ran Sunrise Agro Industries, which we banned in 2024. The ban covers his companies until 2029.' }],
+    red_flags: ['They answered "No" to past bans, which is not true.', 'They would not name their clients.'],
+    web_findings: [], questions: [],
+    form: { 'What they supply': 'Baking fat, margarine, cooking oil', Owners: 'Tariq Mehmood Butt, Saad Tariq', 'Monthly capacity': '900 tonnes', 'Main clients': 'Names on request', 'Related to anyone at EBM?': 'No', 'Any court cases or bans?': 'No' },
+  },
+  {
+    vendor_id: 'EBM-V-10ND5JX', company_name: 'Seaview Cocoa & Commodities', contact_name: 'Adnan Memon', contact_email: 'adnan.seaview@example.com',
+    category: 'Ingredients', city: 'Karachi', years_in_business: '1', score: 23, tier: 'Blocked', blocked: true,
+    recommendation: 'reject', status: 'pending_review',
+    summary: 'A one-person trading business, one year old, with no food safety or Halal certificate. They want full payment up front and can only supply a third of what we need. We suggest rejecting them.',
+    criteria: [
+      { id: 'C1', score: 2, evidence: 'Only a tax number. No company registration.' },
+      { id: 'C2', score: 0, evidence: 'No food safety certificate at all.' },
+      { id: 'C3', score: 1, evidence: 'One year old, small, wants payment up front.' },
+      { id: 'C4', score: 1, evidence: 'Can supply 15 to 20 tonnes. We need 60.' },
+      { id: 'C5', score: 1, evidence: 'Nothing on record.' },
+      { id: 'C6', score: 2, evidence: 'No website and nothing found online.' },
+      { id: 'C7', score: 1, evidence: 'Full payment up front only.' },
+    ],
+    knockouts: [{ reason: 'No food safety certificate.' }, { reason: 'No Halal certificate.' }],
+    red_flags: ['Asked to continue the conversation on WhatsApp.'], web_findings: [], questions: [],
+    form: { 'What they supply': 'Cocoa powder (imported)', Owners: 'Adnan Memon (sole owner)', 'Monthly capacity': '15 to 20 tonnes', 'Payment terms': 'Full payment up front' },
+  },
+  {
+    vendor_id: 'EBM-V-0QP7Z1M', company_name: 'Margalla Print House', contact_name: 'Sana Abbasi', contact_email: 'sana@margallaprint.pk',
+    category: 'Packaging (boxes)', city: 'Islamabad', years_in_business: '12', score: 74, tier: 'B', blocked: false,
+    recommendation: 'approve_with_conditions', status: 'approved', reviewer: 'Mariyam Sheikh',
+    reviewer_note: 'Only for shipping boxes. Start with a trial order of 50,000.', decided_at: '2026-10-17T12:40:00Z',
+    summary: 'Box printer with ten years of experience. Fine for shipping boxes.', criteria: [], knockouts: [], red_flags: [], web_findings: [], questions: [], form: {},
+  },
+  {
+    vendor_id: 'EBM-V-1C2R8TD', company_name: 'Indus Sugar Traders', contact_name: 'Faisal Qureshi', contact_email: 'faisal@indussugar.pk',
+    category: 'Ingredients', city: 'Hyderabad', years_in_business: '6', score: 57, tier: 'C', blocked: false,
+    recommendation: 'send_back', status: 'info_requested', reviewer: 'Mariyam Sheikh',
+    reviewer_note: 'Please send your food safety certificate, your last two years of accounts, and two client references.', decided_at: '2026-10-19T10:05:00Z',
+    summary: 'Sugar trader with the right certificates but little proof of their finances.', criteria: [], knockouts: [], red_flags: [], web_findings: [], questions: [], form: {},
+  },
+];
+
+/* ======================================================================
+   Plain-language labels
+   ====================================================================== */
+const PLAIN_CHECKS = {
+  C1: 'Properly registered and paying tax',
+  C2: 'Food safety certificates',
+  C3: 'Financially stable',
+  C4: 'Can supply enough',
+  C5: 'Treats workers and the environment well',
+  C6: 'Good name online',
+  C7: 'Payment terms and references',
+};
+const STATUS = { approved: 'Approved', info_requested: 'Asked for more information', rejected: 'Rejected' };
+const ADVICE = { approve: 'Approve', approve_with_conditions: 'Approve', send_back: 'Ask them for more information', reject: 'Reject' };
+const ADVICE_TO_CHOICE = { approve: 'approved', approve_with_conditions: 'approved', send_back: 'info_requested', reject: 'rejected' };
+
+function verdict(v) {
+  if (v.status !== 'pending_review') return { cls: 'done', text: STATUS[v.status] };
+  if (v.blocked) return { cls: 'no', text: 'Not allowed' };
+  if (v.score == null || v.tier === 'C' || v.tier === 'D' || v.tier === 'Unscored') return { cls: 'check', text: 'Check first' };
+  return { cls: 'good', text: 'Looks good' };
+}
+const firstSentence = s => (String(s || '').match(/^.*?[.!?](\s|$)/) || [s])[0].trim();
+function oneLine(v) {
+  if (v.blocked && v.knockouts.length) return firstSentence(v.knockouts[0].reason);
+  return firstSentence(v.summary);
+}
+const rate = s => (s >= 4 ? ['good', 'Good'] : s === 3 ? ['ok', 'OK'] : ['weak', 'Weak']);
+
+/* ======================================================================
+   State
+   ====================================================================== */
+const memory = {};
+const store = {
+  get(k, d) { try { return localStorage.getItem('vendorDesk.' + k) ?? memory[k] ?? d; } catch (e) { return memory[k] ?? d; } },
+  set(k, v) { memory[k] = v; try { localStorage.setItem('vendorDesk.' + k, v); } catch (e) {} },
+};
+const state = { vendors: [], demo: true, view: 'home', id: null, step: 1, choice: null, drafts: {}, showDone: false };
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// Good ones first, then ones to check, then ones that are not allowed.
+const ORDER = { good: 0, check: 1, no: 2 };
+const waiting = () => state.vendors.filter(v => v.status === 'pending_review')
+  .sort((a, b) => ORDER[verdict(a).cls] - ORDER[verdict(b).cls] || (b.score ?? -1) - (a.score ?? -1));
+
+/* ======================================================================
+   Home
+   ====================================================================== */
+function renderHome() {
+  const list = waiting();
+  const done = state.vendors.filter(v => v.status !== 'pending_review');
+  const card = v => {
+    const vd = verdict(v);
+    return `<button class="card" type="button" data-open="${esc(v.vendor_id)}">
+      <span class="top"><span class="name">${esc(v.company_name)}</span><span class="label ${vd.cls}">${vd.text}</span></span>
+      <span class="why" style="display:block">${esc(oneLine(v))}</span>
+    </button>`;
+  };
+
+  app.innerHTML = list.length ? `
+    <h1>Vendor Validation System</h1>
+    <h2 class="subhead">${list.length} supplier${list.length > 1 ? 's are' : ' is'} waiting for your decision</h2>
+    <p class="lead">We have checked each one for you. Go through them one by one.</p>
+    <div class="start"><button class="btn" type="button" data-open="${esc(list[0].vendor_id)}">Start →</button></div>
+    <div class="list">${list.map(card).join('')}</div>
+    <div class="foot">
+      ${done.length ? `<button class="link grey" type="button" data-toggle-done>${state.showDone ? 'Hide' : 'Show'} the ${done.length} you have already decided</button>` : ''}
+      ${state.showDone ? `<div style="width:100%">${done.map(card).join('')}</div>` : ''}
+      ${state.demo ? '<span class="note-sample">You are looking at practice data.</span>' : ''}
+    </div>`
+  : `
+    <h1>Vendor Validation System</h1>
+    <h2 class="subhead">All done</h2>
+    <p class="lead">No suppliers are waiting. New ones will appear here after they fill in our form.</p>
+    <div class="foot">
+      ${done.length ? `<button class="link grey" type="button" data-toggle-done>${state.showDone ? 'Hide' : 'Show'} the ${done.length} you have decided</button>` : ''}
+      ${state.showDone ? `<div style="width:100%">${done.map(card).join('')}</div>` : ''}
+    </div>`;
+}
+
+/* ======================================================================
+   Review: 1 Summary → 2 Details → 3 Your decision
+   ====================================================================== */
+function renderReview() {
+  const v = state.vendors.find(x => x.vendor_id === state.id);
+  if (!v) return go('home');
+  const left = waiting().length;
+  const steps = ['1. Summary', '2. Details', '3. Your decision'];
+  const vd = verdict(v);
+  app.innerHTML = `
+    <div class="crumbs"><button class="link" type="button" data-home>← Back</button>
+      <span>${v.status === 'pending_review' ? `${left} waiting` : ''}</span></div>
+    <div class="steps">${steps.map((s, i) => `<button type="button" data-step="${i + 1}" class="${state.step === i + 1 ? 'now' : state.step > i + 1 ? 'past' : ''}">${s}</button>`).join('')}</div>
+    <div class="name-row"><h1>${esc(v.company_name)}</h1><span class="label ${vd.cls}">${vd.text}</span></div>
+    <div class="what-they-do">${esc(v.category)} from ${esc(v.city)}, in business for ${esc(v.years_in_business)} years</div>
+    ${[summary, details, decide][state.step - 1](v)}`;
+}
+
+function summary(v) {
+  return `
+    ${v.blocked ? `<div class="box no"><h2>Why this supplier is not allowed</h2>
+      ${v.knockouts.length > 1 ? `<ul>${v.knockouts.map(k => `<li>${esc(k.reason)}</li>`).join('')}</ul>` : `<p>${esc(v.knockouts[0]?.reason)}</p>`}</div>` : ''}
+    <div class="box"><h2>Our suggestion: ${esc(ADVICE[v.recommendation] || 'Look at this one yourself')}</h2><p>${esc(v.summary)}</p></div>
+    ${v.score != null ? `<div class="score-line">Overall score: <b>${v.score}</b> out of 100</div>` : ''}
+    <div class="actions">
+      <button class="btn" type="button" data-step="2">See the details →</button>
+      <button class="link grey" type="button" data-step="3">Skip to decision</button>
+    </div>`;
+}
+
+function details(v) {
+  const formRows = Object.entries(v.form || {});
+  return `
+    ${v.red_flags.length ? `<div class="sec-wrap"><h2 class="sec">Things to watch out for</h2>
+      <ul class="check-list">${v.red_flags.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}
+    ${v.criteria.length ? `<div class="sec-wrap"><h2 class="sec">How they did on our checks</h2>
+      <ul class="check-list">${v.criteria.map(c => {
+        const [cls, word] = rate(c.score);
+        return `<li><div class="mark"><span class="t">${esc(PLAIN_CHECKS[c.id] || c.name)}</span><span class="w ${cls}">${word}</span></div><div class="small">${esc(c.evidence)}</div></li>`;
+      }).join('')}</ul></div>` : ''}
+    <div class="sec-wrap"><h2 class="sec">What we found online</h2>
+      ${v.web_findings.length ? `<ul class="check-list">${v.web_findings.map(f => `<li>${f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.title)}</a>` : `<b>${esc(f.title)}</b>`}<div class="small">${esc(f.takeaway)}</div></li>`).join('')}</ul>`
+        : '<p class="small">Nothing about this supplier came up online.</p>'}</div>
+    ${formRows.length ? `<div class="sec-wrap"><details><summary>What they told us on the form</summary>
+      <dl>${formRows.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl></details></div>` : ''}
+    <div class="actions">
+      <button class="btn" type="button" data-step="3">Make your decision →</button>
+      <button class="link grey" type="button" data-step="1">Back to summary</button>
+    </div>`;
+}
+
+function decide(v) {
+  if (v.status !== 'pending_review' && !v._reopen) {
+    const when = v.decided_at ? new Date(v.decided_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) : '';
+    return `<div class="box" style="margin-top:32px"><h2>${STATUS[v.status]}</h2>
+      <p>By ${esc(v.reviewer || 'someone')}${when ? ' on ' + when : ''}.${v.reviewer_note ? `<br>“${esc(v.reviewer_note)}”` : ''}</p></div>
+      <div class="actions"><button class="btn light" type="button" data-reopen>Change this decision</button></div>`;
+  }
+  const ours = ADVICE_TO_CHOICE[v.recommendation];
+  const choice = state.choice || ours;
+  const options = [
+    ['approved', v.blocked ? 'Approve anyway' : 'Approve', v.blocked ? 'Only with written permission from the Head of Procurement.' : 'Add them to our list of suppliers.'],
+    ['info_requested', 'Ask for more information', 'We will email them asking for what you write below.'],
+    ['rejected', 'Reject', 'We will email them a polite no.'],
+  ];
+  const box = {
+    approved: v.blocked ? ['Who gave permission, and why?', 'Required. This is kept on our records.'] : ['Anything to add?', 'Optional. Only our team sees this.'],
+    info_requested: ['What do you need from them?', 'This goes into the email to the supplier.'],
+    rejected: ['Reason', 'Optional. Only our team sees this, not the supplier.'],
+  }[choice];
+  const key = v.vendor_id + choice;
+  const text = state.drafts[key] ?? (choice === 'info_requested' && v.questions.length ? v.questions.map(q => '• ' + q).join('\n') : (v._reopen ? v.reviewer_note || '' : ''));
+
+  return `
+    <h2 class="sec" style="margin-top:36px">What would you like to do?</h2>
+    <div class="choices" role="radiogroup">${options.map(([k, t, d]) => `
+      <button type="button" class="choice" role="radio" aria-checked="${choice === k}" data-choice="${k}">
+        <span class="dot"></span><span><span class="t">${t}${k === ours ? '<span class="ours">Our suggestion</span>' : ''}</span><span class="d">${d}</span></span>
+      </button>`).join('')}</div>
+    ${box ? `<div class="write"><label for="note">${box[0]}</label><div class="hint">${box[1]}</div>
+      <textarea id="note" data-key="${esc(key)}">${esc(text)}</textarea>
+      <label class="tick"><input type="checkbox" id="notify" checked> Email the supplier</label></div>` : ''}
+    <div class="err" id="err" role="alert"></div>
+    <div class="actions"><button class="btn" type="button" data-confirm ${choice ? '' : 'disabled'}>Confirm</button></div>`;
+}
+
+function render() { state.view === 'review' ? renderReview() : renderHome(); }
+
+function go(view, id) {
+  Object.assign(state, { view, id: id ?? null, step: 1, choice: null });
+  try { history.replaceState(null, '', id ? '#' + encodeURIComponent(id) : location.pathname + location.search); } catch (e) {}
+  render();
+  window.scrollTo({ top: 0 });
+}
+
+/* ======================================================================
+   Data
+   ====================================================================== */
+const api = () => ({ base: store.get('base', '').replace(/\/$/, ''), key: store.get('key', '') });
+const blank = v => ({ criteria: [], knockouts: [], red_flags: [], web_findings: [], questions: [], form: {}, ...v });
+
+// Live rows carry the raw form keys; show them with plain labels.
+const FORM_LABELS = { offering: 'What they supply', directors: 'Owners', certifications: 'Certificates', cert_expiry: 'Certificate dates',
+  capacity: 'Monthly capacity', key_clients: 'Main clients', payment_terms: 'Payment terms', related_party_details: 'Related to anyone at EBM?',
+  litigation_details: 'Any court cases or bans?', phone: 'Phone' };
+function plainForm(form) {
+  const out = {};
+  for (const [k, val] of Object.entries(form || {})) if (val && FORM_LABELS[k]) out[FORM_LABELS[k]] = val;
+  return out;
+}
+
+async function load() {
+  const { base, key } = api();
+  state.demo = !base || store.get('mode', '') === 'demo';
+  if (state.demo) {
+    state.vendors = SAMPLE.map(v => blank({ ...v }));
+  } else {
+    try {
+      const res = await fetch(base + '/vendor-desk/vendors', { headers: { 'x-desk-key': key } });
+      if (!res.ok) throw new Error(res.status === 401 || res.status === 403 ? 'The access key was not accepted.' : 'The server replied with an error.');
+      state.vendors = ((await res.json()).vendors || []).map(v => blank({ ...v, form: plainForm(v.form) }));
+    } catch (e) {
+      app.innerHTML = `<h1>We couldn't load the suppliers</h1><p class="lead">${esc(e.message)} Please ask IT to check the connection in Settings.</p>`;
+      return;
+    }
+  }
+  const fromHash = decodeURIComponent(location.hash.slice(1));
+  state.vendors.some(v => v.vendor_id === fromHash) ? go('review', fromHash) : go('home');
+}
+
+async function confirmDecision() {
+  const v = state.vendors.find(x => x.vendor_id === state.id);
+  const decision = state.choice || ADVICE_TO_CHOICE[v.recommendation];
+  const note = ($('#note')?.value || '').trim();
+  const notify = $('#notify')?.checked ?? true;
+  const err = $('#err');
+  if (decision === 'info_requested' && note.replace(/[•\s]/g, '').length === 0) { err.textContent = 'Please write what you need from them.'; return; }
+  if (decision === 'approved' && v.blocked && note.length < 20) { err.textContent = 'Please write who gave permission and why. We need this on record.'; return; }
+  const reviewer = store.get('name', '');
+  if (!reviewer) { openSettings('Please add your name first. It is saved with your decision.'); return; }
+
+  const btn = $('[data-confirm]');
+  btn.disabled = true;
+  try {
+    if (!state.demo) {
+      const { base, key } = api();
+      const res = await fetch(base + '/vendor-desk/decision', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-desk-key': key },
+        body: JSON.stringify({ vendor_id: v.vendor_id, decision, note, reviewer, notify }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || out.ok === false) throw new Error(out.error || 'the server replied with an error');
+    }
+    Object.assign(v, { status: decision, reviewer, decided_at: new Date().toISOString(), _reopen: false,
+      reviewer_note: v.blocked && decision === 'approved' ? '[Exception] ' + note : note });
+    const next = waiting()[0];
+    toast(`Done. ${v.company_name}: ${STATUS[decision].toLowerCase()}.${next ? ' Here is the next one.' : ''}`);
+    next ? go('review', next.vendor_id) : go('home');
+  } catch (e) {
+    err.textContent = 'This was not saved: ' + e.message + '. Please try again.';
+    btn.disabled = false;
+  }
+}
+
+/* ======================================================================
+   Events
+   ====================================================================== */
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+function openSettings(hint) {
+  $('#sBase').value = store.get('base', '');
+  $('#sKey').value = store.get('key', '');
+  $('#sName').value = store.get('name', '');
+  $('#settingsHint').textContent = hint || 'Your name is saved with every decision you make.';
+  $('#settings').showModal();
+  $('#sName').focus();
+}
+
+$('#settingsForm').addEventListener('submit', e => {
+  const connection = () => { const { base, key } = api(); return !base || store.get('mode', '') === 'demo' ? 'demo' : base + '|' + key; };
+  const before = connection();
+  store.set('name', $('#sName').value.trim());
+  if (e.submitter?.value === 'save') {
+    store.set('base', $('#sBase').value.trim());
+    store.set('key', $('#sKey').value.trim());
+    store.set('mode', $('#sBase').value.trim() ? 'live' : 'demo');
+  } else {
+    store.set('mode', 'demo');
+  }
+  // Only a new connection reloads; adding a name keeps the reviewer where they were.
+  if (connection() !== before) load();
+});
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('button');
+  if (!t) return;
+  const v = state.vendors.find(x => x.vendor_id === state.id);
+  if (t.matches('[data-home]')) go('home');
+  else if (t.matches('[data-settings]')) openSettings();
+  else if (t.matches('[data-toggle-done]')) { state.showDone = !state.showDone; render(); }
+  else if (t.dataset.open) go('review', t.dataset.open);
+  else if (t.dataset.step) { state.step = Number(t.dataset.step); render(); window.scrollTo({ top: 0 }); }
+  else if (t.dataset.choice) { state.choice = t.dataset.choice; render(); }
+  else if (t.matches('[data-reopen]')) { v._reopen = true; state.choice = v.status; render(); }
+  else if (t.matches('[data-confirm]')) confirmDecision();
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'note') state.drafts[e.target.dataset.key] = e.target.value;
+});
+
+load();
+</script>
+</body>
+</html>

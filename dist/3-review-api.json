@@ -1,0 +1,511 @@
+{
+  "name": "EBM Vendor Desk · 3 Review API",
+  "nodes": [
+    {
+      "id": "42c5d552-e14d-55d9-8996-87b7faa76bdb",
+      "name": "List Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "vendor-desk/vendors",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "3e96f026-c290-5f96-90b6-dc868805ec88",
+      "notes": "Credential: Header Auth named 'Vendor Desk key' — Name: x-desk-key, Value: a long random string"
+    },
+    {
+      "id": "2867ae2a-8176-59ed-8dc6-0c78d4afe38c",
+      "name": "Read Assessments",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "paste from the Apps Script log"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Assessments"
+        },
+        "options": {}
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "711c4d5d-e179-575e-ae20-ce16d6a1da93",
+      "name": "Shape for Desk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Turns Assessment rows back into objects for the Vendor Desk page.\n\nconst JSON_COLUMNS = ['criteria_json', 'knockouts_json', 'red_flags_json', 'web_findings_json', 'questions_json', 'form_json'];\n\nfunction parse(s, fallback) {\n  try { return s ? JSON.parse(s) : fallback; } catch (e) { return fallback; }\n}\n\nconst vendors = $input.all()\n  .map(i => i.json)\n  .filter(r => r.vendor_id)\n  .map(r => {\n    const v = { ...r };\n    for (const col of JSON_COLUMNS) {\n      v[col.replace(/_json$/, '')] = parse(r[col], col === 'form_json' ? {} : []);\n      delete v[col];\n    }\n    delete v.raw_model_output;\n    delete v.row_number;\n    v.score = r.score === '' ? null : Number(r.score);\n    v.blocked = r.blocked === true || String(r.blocked).toUpperCase() === 'TRUE';\n    return v;\n  });\n\nreturn [{ json: { vendors, fetched_at: new Date().toISOString() } }];\n"
+      }
+    },
+    {
+      "id": "bdb2f247-4b23-5d73-bfd4-53d419e32ffc",
+      "name": "Send List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "5110878f-f542-5e27-ba8f-8e305e396504",
+      "name": "Decision Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300.0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vendor-desk/decision",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "bbfae759-a9a2-5872-9283-bd1121f726f8",
+      "notes": "Credential: Header Auth named 'Vendor Desk key' — Name: x-desk-key, Value: a long random string"
+    },
+    {
+      "id": "34bf9189-199f-51c3-aafa-51fce5566340",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300.0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a5f35b98-a2cd-5c9c-97ba-e3889367c384",
+              "name": "company_short",
+              "value": "EBM",
+              "type": "string"
+            },
+            {
+              "id": "29473a76-0129-5c1a-ae59-0cd310228ece",
+              "name": "desk_name",
+              "value": "Vendor Desk, Procurement",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "02c42259-b2f3-53c2-960b-c3e34315767a",
+      "name": "Find Assessment",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        480,
+        300.0
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "paste from the Apps Script log"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Assessments"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "vendor_id",
+              "lookupValue": "={{ $('Decision Webhook').first().json.body.vendor_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "08d3ade1-b1c7-5c10-9f4e-c0cf799f831c",
+      "name": "Check Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300.0
+      ],
+      "parameters": {
+        "jsCode": "// Shared helpers. build.py pastes this file into every Code node that has the\n// include line at its top, so n8n needs no external modules.\n\n// Same algorithm runs in the Apps Script seeder, so a vendor keeps one ID\n// from the first email through the form and the assessment.\nfunction vendorIdFor(email) {\n  const s = String(email || '').trim().toLowerCase();\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return 'EBM-V-' + h.toString(36).toUpperCase().padStart(7, '0').slice(-7);\n}\n\n// Models sometimes wrap JSON in fences or add a sentence before it.\nfunction parseJson(text) {\n  if (!text || typeof text !== 'string') return null;\n  const cleaned = text.replace(/```(?:json)?/gi, '');\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  if (start < 0 || end <= start) return null;\n  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (e) { return null; }\n}\n\nfunction llmText(response) {\n  const choice = response && response.choices && response.choices[0];\n  return (choice && choice.message && choice.message.content) || '';\n}\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n}\n\nfunction clip(s, n) {\n  s = String(s == null ? '' : s).replace(/\\s+\\n/g, '\\n').trim();\n  return s.length > n ? s.slice(0, n) + '…' : s;\n}\n\n// Validates a reviewer's decision against the stored assessment and prepares\n// the sheet update and the vendor email.\n\nconst cfg = $('Config').first().json;\nconst body = $('Decision Webhook').first().json.body || {};\nconst row = $input.first().json || {};\n\nconst DECISIONS = {\n  approved: 'approved',\n  info_requested: 'info_requested',\n  rejected: 'rejected',\n};\n\nfunction fail(error) {\n  return [{ json: { ok: false, error } }];\n}\n\nconst decision = DECISIONS[body.decision];\nconst note = String(body.note || '').trim();\nconst reviewer = String(body.reviewer || '').trim();\n\nif (!decision) return fail('decision must be approved, info_requested or rejected');\nif (!reviewer) return fail('reviewer name is required');\nif (!row.vendor_id || row.vendor_id !== body.vendor_id) return fail(`no assessment found for ${body.vendor_id}`);\n\nconst blocked = row.blocked === true || String(row.blocked).toUpperCase() === 'TRUE';\n// Policy section 3: a blocked vendor needs a written exception to be approved.\nif (decision === 'approved' && blocked && note.length < 20) {\n  return fail('this vendor is blocked; approving it needs an exception note of at least 20 characters');\n}\nif (decision === 'info_requested' && !note) return fail('write what the vendor should send');\n\nconst name = esc((row.contact_name || '').split(' ')[0] || 'there');\nconst sign = `<p>Kind regards,<br>${esc(cfg.desk_name)}</p>`;\nconst wrap = inner => `<div style=\"font-family:Arial,sans-serif;font-size:15px;line-height:1.55;color:#212529;max-width:560px\"><p>Dear ${name},</p>${inner}${sign}</div>`;\n\nconst emails = {\n  approved: {\n    subject: `Your vendor registration is approved – ${row.vendor_id}`,\n    html: wrap(`<p>We are glad to let you know that ${esc(row.company_name)} has been approved as a supplier to ${esc(cfg.company_short)}. A buyer from our procurement team will contact you within a week about your vendor code and next steps.</p>`),\n  },\n  info_requested: {\n    subject: `We need a few more details – ${row.vendor_id}`,\n    html: wrap(`<p>Thank you for completing our vendor form. Before we can finish reviewing ${esc(row.company_name)}, we need the following:</p><p style=\"white-space:pre-line;border-left:3px solid #4ec3ec;padding-left:12px\">${esc(note)}</p><p>Please reply to this email with the documents attached and keep your reference ${row.vendor_id} in the subject.</p>`),\n  },\n  rejected: {\n    subject: `Your vendor registration – ${row.vendor_id}`,\n    html: wrap(`<p>Thank you for your interest in supplying ${esc(cfg.company_short)}. After reviewing your submission we are not able to add ${esc(row.company_name)} to our supplier list at this time. You are welcome to apply again in twelve months.</p>`),\n  },\n};\n\nreturn [{\n  json: {\n    ok: true,\n    notify: body.notify !== false && Boolean(row.contact_email),\n    contact_email: row.contact_email,\n    email_subject: emails[decision].subject,\n    email_html: emails[decision].html,\n    // Written to the sheet; ok, notify and email_* have no column and are ignored.\n    vendor_id: row.vendor_id,\n    status: decision,\n    reviewer,\n    reviewer_note: decision === 'approved' && blocked ? '[Exception] ' + note : note,\n    decided_at: new Date().toISOString(),\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "f6513a8c-a780-5a7b-a4cc-7edb173bd4e1",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        300.0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4a424f0f-2df9-5ad1-8030-cdffb4705e73",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ea388d3f-8d07-53fa-a14a-85560cf20623",
+      "name": "Save Decision",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1200,
+        200
+      ],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "paste from the Apps Script log"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Assessments"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "vendor_id"
+          ],
+          "schema": []
+        },
+        "options": {
+          "handlingExtraData": "ignoreIt"
+        }
+      }
+    },
+    {
+      "id": "5ba75fd5-3cd9-5451-9822-bbcb47500398",
+      "name": "Email vendor?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4749f5e1-f4cc-590e-9fe3-16cbefa116d4",
+              "leftValue": "={{ $('Check Decision').item.json.notify }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a6efa2e5-e898-5be4-b407-e80d9c1fc92d",
+      "name": "Email Vendor",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1680,
+        140.0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Check Decision').item.json.contact_email }}",
+        "subject": "={{ $('Check Decision').item.json.email_subject }}",
+        "emailType": "html",
+        "message": "={{ $('Check Decision').item.json.email_html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "={{ $('Config').first().json.desk_name }}"
+        }
+      }
+    },
+    {
+      "id": "dc1383a3-a243-5751-b130-8317cf6d9339",
+      "name": "Saved",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1920,
+        140.0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, vendor_id: $('Check Decision').item.json.vendor_id, status: $('Check Decision').item.json.status, emailed: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "1165e0c8-5c0d-51ef-a237-ebbdba1f5d02",
+      "name": "Saved, no email",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1680,
+        300.0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, vendor_id: $('Check Decision').item.json.vendor_id, status: $('Check Decision').item.json.status, emailed: false }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "a19be8d9-bdb9-5bbf-b504-35e968e3a88b",
+      "name": "Rejected Request",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        440.00000000000006
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: $json.error }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      }
+    },
+    {
+      "id": "cdaeb583-b361-5c55-869f-645695a50d99",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -300
+      ],
+      "parameters": {
+        "content": "## 3 · Vendor Desk API\nTwo webhooks behind one header key. **GET vendor-desk/vendors** returns every assessment for the Desk page. **POST vendor-desk/decision** records approve, ask-for-info or reject, writes it to **Assessments**, and emails the vendor unless the reviewer turned that off.",
+        "width": 620,
+        "height": 200
+      }
+    }
+  ],
+  "connections": {
+    "List Webhook": {
+      "main": [
+        [
+          {
+            "node": "Read Assessments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Assessments": {
+      "main": [
+        [
+          {
+            "node": "Shape for Desk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape for Desk": {
+      "main": [
+        [
+          {
+            "node": "Send List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Find Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Assessment": {
+      "main": [
+        [
+          {
+            "node": "Check Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Decision": {
+      "main": [
+        [
+          {
+            "node": "Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid?": {
+      "main": [
+        [
+          {
+            "node": "Save Decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejected Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Decision": {
+      "main": [
+        [
+          {
+            "node": "Email vendor?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email vendor?": {
+      "main": [
+        [
+          {
+            "node": "Email Vendor",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Saved, no email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Vendor": {
+      "main": [
+        [
+          {
+            "node": "Saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "active": false
+}

@@ -1,0 +1,453 @@
+{
+  "name": "EBM Vendor Desk · 2 Assess",
+  "nodes": [
+    {
+      "id": "774368a6-54a2-5279-8fa7-6fb13ddbabe8",
+      "name": "Form Response Trigger",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "paste from the Apps Script log"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "paste from the Apps Script log"
+        },
+        "event": "rowAdded",
+        "options": {}
+      }
+    },
+    {
+      "id": "7b31dbbd-3314-5b8d-845b-0125334a4853",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ea36371e-5ace-560f-9bc0-16ba3da190e6",
+              "name": "approver_email",
+              "value": "approver@example.com",
+              "type": "string"
+            },
+            {
+              "id": "16856fd6-0033-575d-b056-8d529cffedf8",
+              "name": "review_url",
+              "value": "https://where-you-host-the-vendor-desk/",
+              "type": "string"
+            },
+            {
+              "id": "083ddf23-260f-5060-9d76-dab96aad558f",
+              "name": "company_short",
+              "value": "EBM",
+              "type": "string"
+            },
+            {
+              "id": "275ecbeb-7706-5730-8e90-cd25b2706281",
+              "name": "desk_name",
+              "value": "Vendor Desk, Procurement",
+              "type": "string"
+            },
+            {
+              "id": "6100fa97-2c20-55ed-881a-e3ced41be78f",
+              "name": "assess_model",
+              "value": "google/gemma-4-31b-it:free",
+              "type": "string"
+            },
+            {
+              "id": "9bc42248-fb0f-5f22-b754-6cfd177ebe76",
+              "name": "fallback_model",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "9c9559dc-13c2-5424-bbcd-7a769a06e187",
+      "name": "Get GRC Policy",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "operation": "get",
+        "documentURL": "paste from the Apps Script log",
+        "simple": true
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "328a4abb-9a28-5a6a-9240-cd773d7feb68",
+      "name": "Read Intake",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "paste from the Apps Script log"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Intake"
+        },
+        "options": {}
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "c81e9063-dc9d-5171-a8cf-633acd29772d",
+      "name": "Normalize Vendors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Shared helpers. build.py pastes this file into every Code node that has the\n// include line at its top, so n8n needs no external modules.\n\n// Same algorithm runs in the Apps Script seeder, so a vendor keeps one ID\n// from the first email through the form and the assessment.\nfunction vendorIdFor(email) {\n  const s = String(email || '').trim().toLowerCase();\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return 'EBM-V-' + h.toString(36).toUpperCase().padStart(7, '0').slice(-7);\n}\n\n// Models sometimes wrap JSON in fences or add a sentence before it.\nfunction parseJson(text) {\n  if (!text || typeof text !== 'string') return null;\n  const cleaned = text.replace(/```(?:json)?/gi, '');\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  if (start < 0 || end <= start) return null;\n  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (e) { return null; }\n}\n\nfunction llmText(response) {\n  const choice = response && response.choices && response.choices[0];\n  return (choice && choice.message && choice.message.content) || '';\n}\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n}\n\nfunction clip(s, n) {\n  s = String(s == null ? '' : s).replace(/\\s+\\n/g, '\\n').trim();\n  return s.length > n ? s.slice(0, n) + '…' : s;\n}\n\n// Maps Google Form column titles to field keys and joins each response to the\n// email the vendor first sent us.\n\nconst FIELDS = [\n  {\n    \"key\": \"vendor_id\",\n    \"title\": \"Reference ID\"\n  },\n  {\n    \"key\": \"company_name\",\n    \"title\": \"Company legal name\"\n  },\n  {\n    \"key\": \"contact_name\",\n    \"title\": \"Contact person\"\n  },\n  {\n    \"key\": \"contact_email\",\n    \"title\": \"Contact email\"\n  },\n  {\n    \"key\": \"phone\",\n    \"title\": \"Phone\"\n  },\n  {\n    \"key\": \"category\",\n    \"title\": \"Supply category\"\n  },\n  {\n    \"key\": \"offering\",\n    \"title\": \"What do you supply?\"\n  },\n  {\n    \"key\": \"website\",\n    \"title\": \"Company website\"\n  },\n  {\n    \"key\": \"city\",\n    \"title\": \"City\"\n  },\n  {\n    \"key\": \"years_in_business\",\n    \"title\": \"Years in business\"\n  },\n  {\n    \"key\": \"ntn\",\n    \"title\": \"NTN\"\n  },\n  {\n    \"key\": \"strn\",\n    \"title\": \"STRN\"\n  },\n  {\n    \"key\": \"secp_no\",\n    \"title\": \"SECP registration number\"\n  },\n  {\n    \"key\": \"directors\",\n    \"title\": \"Owners or directors (full names)\"\n  },\n  {\n    \"key\": \"certifications\",\n    \"title\": \"Certifications held\"\n  },\n  {\n    \"key\": \"cert_expiry\",\n    \"title\": \"Certificate expiry dates\"\n  },\n  {\n    \"key\": \"turnover\",\n    \"title\": \"Annual turnover (PKR)\"\n  },\n  {\n    \"key\": \"capacity\",\n    \"title\": \"Monthly capacity\"\n  },\n  {\n    \"key\": \"key_clients\",\n    \"title\": \"Key clients\"\n  },\n  {\n    \"key\": \"payment_terms\",\n    \"title\": \"Payment terms offered\"\n  },\n  {\n    \"key\": \"related_party\",\n    \"title\": \"Is any owner or director related to an EBM employee?\"\n  },\n  {\n    \"key\": \"related_party_details\",\n    \"title\": \"If yes, give the name and relationship\"\n  },\n  {\n    \"key\": \"litigation\",\n    \"title\": \"Any litigation, debarment or regulatory action in the last 5 years?\"\n  },\n  {\n    \"key\": \"litigation_details\",\n    \"title\": \"If yes, give details\"\n  },\n  {\n    \"key\": \"declaration\",\n    \"title\": \"Declaration\"\n  }\n];\n\nconst intake = {};\nfor (const row of $('Read Intake').all()) {\n  if (row.json.vendor_id) intake[row.json.vendor_id] = row.json;\n}\n\nreturn $('Form Response Trigger').all().map(({ json: row }) => {\n  const v = {};\n  for (const f of FIELDS) v[f.key] = String(row[f.title] == null ? '' : row[f.title]).trim();\n\n  v.contact_email = v.contact_email.toLowerCase();\n  // A vendor who opens a forwarded or bare form link has no reference ID.\n  if (!/^EBM-V-/.test(v.vendor_id)) v.vendor_id = vendorIdFor(v.contact_email);\n  v.form_submitted_at = row.Timestamp || new Date().toISOString();\n  v.website = v.website.replace(/^https?:\\/\\//i, '').replace(/\\/$/, '');\n\n  const first = intake[v.vendor_id] || {};\n  v.original_email = first.email_body ? `Subject: ${first.subject}\\n\\n${first.email_body}` : '';\n  return { json: v };\n});\n"
+      }
+    },
+    {
+      "id": "38d69d8b-06c7-5188-a5d7-d74816e1fa7a",
+      "name": "Build Search Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Three web searches per vendor: who they are, anything adverse about the\n// company or its directors, and what their own site claims.\n\nconst out = [];\nfor (const { json: v } of $input.all()) {\n  const name = `\"${v.company_name}\"`;\n  const people = v.directors\n    .replace(/\\(.*?\\)/g, '')\n    .split(/[,;\\n]| and /)\n    .map(s => s.trim())\n    .filter(s => s.split(' ').length >= 2)\n    .slice(0, 2)\n    .map(s => `\"${s}\"`);\n\n  const queries = [\n    `${name} ${v.city} Pakistan`,\n    `${[name, ...people].join(' OR ')} fraud OR lawsuit OR debarred OR adulteration OR penalty OR FIR`,\n    v.website ? `${v.website} ${v.company_name} certification clients` : `${name} ${v.offering.split(/[,.]/)[0]} supplier reviews`,\n  ];\n  queries.forEach((query, n) => out.push({\n    json: { vendor_id: v.vendor_id, purpose: ['profile', 'adverse', 'claims'][n], query },\n  }));\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "5233f178-22f4-50e8-b305-a365ec720222",
+      "name": "Web Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.tavily.com/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: $json.query, search_depth: 'basic', max_results: 5, include_answer: false }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "notes": "Credential: Header Auth named 'Tavily' — Name: Authorization, Value: Bearer tvly-…"
+    },
+    {
+      "id": "f63a5312-5156-5836-925c-25627fe9e19e",
+      "name": "Build Assessment Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Shared helpers. build.py pastes this file into every Code node that has the\n// include line at its top, so n8n needs no external modules.\n\n// Same algorithm runs in the Apps Script seeder, so a vendor keeps one ID\n// from the first email through the form and the assessment.\nfunction vendorIdFor(email) {\n  const s = String(email || '').trim().toLowerCase();\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return 'EBM-V-' + h.toString(36).toUpperCase().padStart(7, '0').slice(-7);\n}\n\n// Models sometimes wrap JSON in fences or add a sentence before it.\nfunction parseJson(text) {\n  if (!text || typeof text !== 'string') return null;\n  const cleaned = text.replace(/```(?:json)?/gi, '');\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  if (start < 0 || end <= start) return null;\n  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (e) { return null; }\n}\n\nfunction llmText(response) {\n  const choice = response && response.choices && response.choices[0];\n  return (choice && choice.message && choice.message.content) || '';\n}\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n}\n\nfunction clip(s, n) {\n  s = String(s == null ? '' : s).replace(/\\s+\\n/g, '\\n').trim();\n  return s.length > n ? s.slice(0, n) + '…' : s;\n}\n\n// Groups the search results by vendor and writes one assessment request per\n// vendor. The GRC policy goes in whole: it carries the rubric, the knockout\n// rules and the restricted parties list the model must check against.\n\nconst cfg = $('Config').first().json;\nconst policy = clip($('Get GRC Policy').first().json.content, 16000);\nconst queries = $('Build Search Queries').all();\n\nconst evidence = {};\n$input.all().forEach((item, i) => {\n  const q = queries[i].json;\n  const results = (item.json.results || []).map(r => ({\n    title: r.title, url: r.url, text: clip(r.content, 500),\n  }));\n  (evidence[q.vendor_id] = evidence[q.vendor_id] || []).push({\n    purpose: q.purpose, query: q.query,\n    error: item.json.error ? String(item.json.error.message || item.json.error) : undefined,\n    results,\n  });\n});\n\nconst SYSTEM = `You are the supplier risk analyst for a biscuit manufacturer in Pakistan.\nAssess one prospective vendor against the company's GRC policy. Use only the policy, the vendor's form answers, their first email and the web search results given. Do not invent facts. Where the web results say nothing about the vendor, say so; that is not evidence of wrongdoing.\nToday's date is ${new Date().toISOString().slice(0, 10)}. Treat any certificate with an expiry date before today as expired.\nCheck every knockout rule (K1 to K6). Check the vendor name and every director against the Restricted Parties section, including directors shared with a restricted company.\nScore every criterion C1 to C7 from 0 to 5 using the policy's descriptors.\nEverything you write (summary, evidence, reasons, red flags, takeaways, questions) is read by a manager who is not a compliance specialist. Write in plain, everyday English with short sentences. Do not mention rule codes (C1, K3), section numbers, acronyms like GRC, SMETA or FSSC, or the words \"knockout\" or \"criterion\". Say \"food safety certificate\", \"Halal certificate\", \"tax registration\", \"workplace audit\" instead. Name people and dates where they matter.\nReply with JSON only:\n{\n \"criteria\": [{\"id\": \"C1\", \"score\": 0-5, \"evidence\": \"short reason with source\"}],\n \"knockouts\": [{\"rule\": \"K1\", \"triggered\": true|false, \"reason\": \"short reason\"}],\n \"red_flags\": [\"short items a reviewer must look at\"],\n \"web_findings\": [{\"title\": \"\", \"url\": \"\", \"takeaway\": \"one line\", \"tone\": \"positive|neutral|negative\"}],\n \"questions_for_vendor\": [\"specific documents or answers to request\"],\n \"summary\": \"three sentences a procurement manager can act on\",\n \"recommendation\": \"approve|approve_with_conditions|send_back|reject\"\n}`;\n\nreturn $('Normalize Vendors').all().map(({ json: v }) => {\n  const { original_email, ...form } = v;\n  const user = [\n    '## GRC policy', policy,\n    '## Vendor form answers', JSON.stringify(form, null, 1),\n    '## First email from the vendor', original_email || '(not found)',\n    '## Web search results', JSON.stringify(evidence[v.vendor_id] || [], null, 1),\n  ].join('\\n\\n');\n\n  return {\n    json: {\n      vendor_id: v.vendor_id,\n      request: {\n        models: [cfg.assess_model, cfg.fallback_model].filter(Boolean),\n        temperature: 0.1,\n        messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: user }],\n      },\n    },\n  };\n});\n"
+      }
+    },
+    {
+      "id": "f8cc819a-2d43-5ff0-b945-380e5f8c8559",
+      "name": "Assess with AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1920,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Title",
+              "value": "Vendor Desk"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 6000
+            }
+          },
+          "timeout": 180000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "notes": "Credential: Header Auth named 'OpenRouter' — Name: Authorization, Value: Bearer sk-or-…"
+    },
+    {
+      "id": "ce1b78f2-d3e3-5ca8-a641-56cc0f97052e",
+      "name": "Score against GRC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Shared helpers. build.py pastes this file into every Code node that has the\n// include line at its top, so n8n needs no external modules.\n\n// Same algorithm runs in the Apps Script seeder, so a vendor keeps one ID\n// from the first email through the form and the assessment.\nfunction vendorIdFor(email) {\n  const s = String(email || '').trim().toLowerCase();\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return 'EBM-V-' + h.toString(36).toUpperCase().padStart(7, '0').slice(-7);\n}\n\n// Models sometimes wrap JSON in fences or add a sentence before it.\nfunction parseJson(text) {\n  if (!text || typeof text !== 'string') return null;\n  const cleaned = text.replace(/```(?:json)?/gi, '');\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  if (start < 0 || end <= start) return null;\n  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (e) { return null; }\n}\n\nfunction llmText(response) {\n  const choice = response && response.choices && response.choices[0];\n  return (choice && choice.message && choice.message.content) || '';\n}\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n}\n\nfunction clip(s, n) {\n  s = String(s == null ? '' : s).replace(/\\s+\\n/g, '\\n').trim();\n  return s.length > n ? s.slice(0, n) + '…' : s;\n}\n\n// The model scores each criterion; the weighted total, tier and knockout\n// verdict are computed here so they always follow the policy's arithmetic.\n\nconst cfg = $('Config').first().json;\nconst policy = $('Get GRC Policy').first().json.content || '';\nconst vendors = $('Normalize Vendors').all();\n\n// Weights come from lines like \"C2 — Food safety ... (weight 20)\" in the\n// GRC doc, so procurement can re-weight by editing the doc.\nconst FALLBACK = {\n  C1: ['Legal and tax compliance', 15], C2: ['Food safety and quality certification', 20],\n  C3: ['Financial stability', 15], C4: ['Operational capacity and delivery', 15],\n  C5: ['Ethics, labour and environment', 10], C6: ['Reputation and public record', 15],\n  C7: ['Commercial terms and references', 10],\n};\nconst weights = {};\nfor (const m of policy.matchAll(/\\b(C\\d{1,2})\\s*[—–-]\\s*([^\\n(]+?)\\s*\\(weight\\s*(\\d+)\\)/gi)) {\n  weights[m[1].toUpperCase()] = [m[2].trim(), Number(m[3])];\n}\nconst rubric = Object.keys(weights).length ? weights : FALLBACK;\nconst totalWeight = Object.values(rubric).reduce((s, [, w]) => s + w, 0);\n\n// Section 5 of the policy.\nfunction tierFor(score, blocked) {\n  if (blocked) return 'Blocked';\n  if (score >= 80) return 'A';\n  if (score >= 65) return 'B';\n  if (score >= 50) return 'C';\n  return 'D';\n}\n\nreturn $input.all().map((item, i) => {\n  const v = vendors[i].json;\n  const raw = llmText(item.json);\n  const a = parseJson(raw);\n  const now = new Date().toISOString();\n\n  const base = {\n    vendor_id: v.vendor_id,\n    company_name: v.company_name,\n    contact_name: v.contact_name,\n    contact_email: v.contact_email,\n    phone: v.phone,\n    category: v.category,\n    city: v.city,\n    website: v.website,\n    years_in_business: v.years_in_business,\n    turnover: v.turnover,\n    payment_terms: v.payment_terms,\n    certifications: v.certifications,\n    form_json: JSON.stringify(v),\n    assessed_at: now,\n    model: (item.json && item.json.model) || '',\n    status: 'pending_review',\n    reviewer: '', reviewer_note: '', decided_at: '',\n  };\n\n  if (!a || !Array.isArray(a.criteria)) {\n    const why = item.json && item.json.error ? String(item.json.error.message || item.json.error) : 'model reply was not valid JSON';\n    return { json: { ...base, score: '', tier: 'Unscored', blocked: false,\n      summary: `Automatic assessment failed (${why}). Review the form by hand.`,\n      recommendation: 'send_back', criteria_json: '[]', knockouts_json: '[]', red_flags_json: JSON.stringify([why]),\n      web_findings_json: '[]', questions_json: '[]', raw_model_output: clip(raw, 4000) } };\n  }\n\n  const byId = {};\n  for (const c of a.criteria) byId[String(c.id).toUpperCase()] = c;\n  const criteria = Object.entries(rubric).map(([id, [name, weight]]) => {\n    const c = byId[id] || {};\n    const s = Math.max(0, Math.min(5, Number(c.score) || 0));\n    return { id, name, weight, score: s, evidence: c.evidence || 'Not assessed by the model.' };\n  });\n  const score = Math.round(criteria.reduce((sum, c) => sum + (c.score / 5) * c.weight, 0) * 100 / totalWeight);\n  const knockouts = (a.knockouts || []).filter(k => k.triggered === true || k.triggered === 'true');\n  const blocked = knockouts.length > 0;\n\n  return {\n    json: {\n      ...base,\n      score,\n      tier: tierFor(score, blocked),\n      blocked,\n      summary: a.summary || '',\n      recommendation: blocked && /approve/.test(a.recommendation || '') ? 'reject' : (a.recommendation || ''),\n      criteria_json: JSON.stringify(criteria),\n      knockouts_json: JSON.stringify(knockouts.map(k => ({ rule: k.rule, reason: k.reason }))),\n      red_flags_json: JSON.stringify(a.red_flags || []),\n      web_findings_json: JSON.stringify((a.web_findings || []).slice(0, 8)),\n      questions_json: JSON.stringify(a.questions_for_vendor || []),\n      raw_model_output: '',\n      // Used by the approver email only; the sheet ignores it.\n      notify_html: `\n<div style=\"font-family:Arial,sans-serif;color:#212529;font-size:15px;line-height:1.5;max-width:560px\">\n  <p><b>${esc(v.company_name)}</b> (${esc(v.category)}, ${esc(v.city)}) is ready for review.</p>\n  <p style=\"font-size:28px;margin:6px 0\">${score}<span style=\"font-size:15px\"> out of 100</span></p>\n  ${blocked ? `<p style=\"color:#c42e1c\"><b>Not allowed:</b> ${knockouts.map(k => esc(k.reason)).join(' ')}</p>` : ''}\n  <p>${esc(a.summary || '')}</p>\n  <p><a href=\"${esc(cfg.review_url)}#${encodeURIComponent(v.vendor_id)}\" style=\"color:#343579\">Review this supplier</a></p>\n</div>`,\n    },\n  };\n});\n"
+      }
+    },
+    {
+      "id": "8a5c6176-278b-5811-adcc-e1d35b4b0285",
+      "name": "Save Assessment",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2400,
+        0
+      ],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "paste from the Apps Script log"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Assessments"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "vendor_id"
+          ],
+          "schema": []
+        },
+        "options": {
+          "handlingExtraData": "ignoreIt"
+        }
+      }
+    },
+    {
+      "id": "67dad13c-6cb9-5cf4-9759-166fff267cb1",
+      "name": "Tell the Approver",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2640,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Config').first().json.approver_email }}",
+        "subject": "=Vendor ready for review: {{ $('Score against GRC').item.json.company_name }} · {{ $('Score against GRC').item.json.score }} ({{ $('Score against GRC').item.json.tier }})",
+        "emailType": "html",
+        "message": "={{ $('Score against GRC').item.json.notify_html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "={{ $('Config').first().json.desk_name }}"
+        }
+      }
+    },
+    {
+      "id": "0cc7efd4-0126-53bb-b988-dc45ac473440",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -300
+      ],
+      "parameters": {
+        "content": "## 2 · Assess\nWhen a Google Form response lands in the sheet, each vendor gets three web searches, then the AI model scores them against the GRC doc. The weighted score and tier are computed in **Score against GRC** from the weights in the doc. The result goes to **Assessments** with status *pending_review*, and the approver gets an email.",
+        "width": 620,
+        "height": 200
+      }
+    }
+  ],
+  "connections": {
+    "Form Response Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Get GRC Policy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get GRC Policy": {
+      "main": [
+        [
+          {
+            "node": "Read Intake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Intake": {
+      "main": [
+        [
+          {
+            "node": "Normalize Vendors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Vendors": {
+      "main": [
+        [
+          {
+            "node": "Build Search Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Search Queries": {
+      "main": [
+        [
+          {
+            "node": "Web Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Web Search": {
+      "main": [
+        [
+          {
+            "node": "Build Assessment Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Assessment Prompt": {
+      "main": [
+        [
+          {
+            "node": "Assess with AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assess with AI": {
+      "main": [
+        [
+          {
+            "node": "Score against GRC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score against GRC": {
+      "main": [
+        [
+          {
+            "node": "Save Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Assessment": {
+      "main": [
+        [
+          {
+            "node": "Tell the Approver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "active": false
+}
