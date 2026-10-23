@@ -9,5 +9,6 @@
   "triage_model": "google/gemma-4-31b-it:free",
   "assess_model": "google/gemma-4-31b-it:free",
   "fallback_model": "",
-  "webhook_base": "https://YOUR-TEAM.app.n8n.cloud/webhook"
+  "webhook_base": "https://YOUR-TEAM.app.n8n.cloud/webhook",
+  "vendor_sender": "vendor.test.mailbox@gmail.com"
 }

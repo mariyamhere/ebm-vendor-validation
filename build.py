@@ -192,8 +192,8 @@ def build_intake(cfg):
     nodes = [
         node(wf, "Gmail Trigger", "n8n-nodes-base.gmailTrigger", 1.2, {
             "pollTimes": {"item": [{"mode": "everyMinute"}]}, "simple": False,
-            # Never our own mail, so replies we send can't loop back in.
-            "filters": {"q": "in:inbox -from:me -category:promotions -category:social", "readStatus": "both"},
+            # POC: only the test vendor mailbox counts as a vendor; nothing else in the inbox is touched.
+            "filters": {"q": "from:" + cfg["vendor_sender"] + " in:inbox", "readStatus": "both"},
             "options": {}}),
         config_node(wf, cfg, ["intake_email", "form_url", "company_short", "desk_name", "triage_model", "fallback_model"]),
         code_node(wf, "Prepare Email", "intake-prepare.js"),
@@ -209,7 +209,7 @@ def build_intake(cfg):
         gmail_reply(wf, "Reply with Form Link", "={{ $('Read Triage').item.json.message_id }}",
                     "={{ $('Read Triage').item.json.reply_html }}"),
         node(wf, "Leave for a person", "n8n-nodes-base.noOp", 1, {}),
-        sticky(wf, "About", "## 1 · Intake\nEvery minute: new inbox mail (never our own) is read by the AI. A supplier inquiry gets a reference ID, a row in **ebm_vendors**, and a reply **in the same thread** with their personal form link. Anything else is left for a person.", [-40, -260], 560, 180),
+        sticky(wf, "About", "## 1 · Intake\nEvery minute: new mail from the test vendor address is read by the AI. A supplier inquiry gets a reference ID, a row in **ebm_vendors**, and a reply **in the same thread** with their personal form link. Anything else is left for a person.", [-40, -260], 560, 180),
     ]
     order = ["Gmail Trigger", "Config", "Prepare Email", "Triage with AI", "Read Triage", "Vendor inquiry?",
              "New vendor thread?", "Vendor Row", "Save Vendor", "Reply with Form Link"]
