@@ -3,7 +3,10 @@
 // the table update and the reply to the vendor's email thread.
 
 const cfg = $('Config').first().json;
-const body = $('Decision Webhook').first().json.body || {};
+// The page posts form-encoded "payload=<json>" so a sandboxed page needs no CORS preflight.
+const raw = $('Decision Webhook').first().json.body || {};
+let body = raw;
+try { if (typeof raw.payload === 'string') body = JSON.parse(raw.payload); } catch (e) { body = {}; }
 const row = $input.first().json || {};
 let saved = {};
 try { saved = JSON.parse(row.assessment || '{}'); } catch (e) {}

@@ -134,8 +134,6 @@ dialog p { margin: 0 0 6px; color: var(--body); font-size: 17px; }
 dialog label { display: block; font-size: 16px; font-weight: 600; margin: 16px 0 6px; }
 dialog input { width: 100%; border: 2px solid var(--line); border-radius: 12px; padding: 11px 14px; font-size: 17px; }
 dialog .btns { display: flex; justify-content: flex-end; gap: 20px; align-items: center; margin-top: 26px; }
-dialog .tech { margin-top: 18px; }
-dialog .tech summary { font-size: 16px; color: var(--muted); font-weight: 500; }
 
 .toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); opacity: 0; background: var(--navy); color: #fff; padding: 16px 26px; border-radius: 16px; font-size: 18px; transition: .25s; pointer-events: none; max-width: calc(100vw - 32px); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -181,15 +179,7 @@ dialog .tech summary { font-size: 16px; color: var(--muted); font-weight: 500; }
     <p id="settingsHint">Your name is saved with every decision you make.</p>
     <label for="sName">Your name</label>
     <input id="sName" autocomplete="name">
-    <details class="tech">
-      <summary>Connection (set up by IT)</summary>
-      <label for="sBase">Webhook address</label>
-      <input id="sBase" placeholder="https://yourteam.app.n8n.cloud/webhook" autocomplete="off">
-      <label for="sKey">Access key</label>
-      <input id="sKey" type="password" autocomplete="off">
-    </details>
     <div class="btns">
-      <button class="link grey" value="demo" type="submit">Use practice data</button>
       <button class="btn" value="save" type="submit">Save</button>
     </div>
   </form>
@@ -493,7 +483,11 @@ function go(view, id) {
 /* ======================================================================
    Data
    ====================================================================== */
-const api = () => ({ base: store.get('base', '').replace(/\/$/, ''), key: store.get('key', '') });
+// n8n serves this page with window.VENDOR_DESK = { base, token, open } filled in.
+// Opened as a plain file, the page shows practice data instead.
+const LIVE = window.VENDOR_DESK || null;
+const apiUrl = path => `${LIVE.base}/${path}?t=${encodeURIComponent(LIVE.token)}`;
+const SESSION_ENDED = 'Your session has ended. Please reload the page.';
 const blank = v => ({ criteria: [], knockouts: [], red_flags: [], web_findings: [], questions: [], form: {}, ...v });
 
 // Live rows carry the raw form keys; show them with plain labels.
@@ -507,22 +501,24 @@ function plainForm(form) {
 }
 
 async function load() {
-  const { base, key } = api();
-  state.demo = !base || store.get('mode', '') === 'demo';
+  state.demo = !LIVE;
   if (state.demo) {
     state.vendors = SAMPLE.map(v => blank({ ...v }));
   } else {
     try {
-      const res = await fetch(base + '/vendor-desk/vendors', { headers: { 'x-desk-key': key } });
-      if (!res.ok) throw new Error(res.status === 401 || res.status === 403 ? 'The access key was not accepted.' : 'The server replied with an error.');
+      // A plain GET with the pass in the link: no custom headers, so no CORS preflight.
+      const res = await fetch(apiUrl('vendor-desk/vendors'));
+      if (res.status === 401) throw new Error(SESSION_ENDED);
+      if (!res.ok) throw new Error('The server replied with an error (' + res.status + ').');
       state.vendors = ((await res.json()).vendors || []).map(v => blank({ ...v, form: plainForm(v.form) }));
     } catch (e) {
-      app.innerHTML = `<h1>We couldn't load the suppliers</h1><p class="lead">${esc(e.message)} Please ask IT to check the connection in Settings.</p>`;
+      app.innerHTML = `<h1>We couldn't load the suppliers</h1><p class="lead">${esc(e.message)}</p>`;
       return;
     }
   }
-  const fromHash = decodeURIComponent(location.hash.slice(1));
-  state.vendors.some(v => v.vendor_id === fromHash) ? go('review', fromHash) : go('home');
+  // The approver email links to the page with ?vendor=ID; n8n passes it in as LIVE.open.
+  const wanted = (LIVE && LIVE.open) || decodeURIComponent(location.hash.slice(1));
+  state.vendors.some(v => v.vendor_id === wanted) ? go('review', wanted) : go('home');
 }
 
 async function confirmDecision() {
@@ -540,12 +536,12 @@ async function confirmDecision() {
   btn.disabled = true;
   try {
     if (!state.demo) {
-      const { base, key } = api();
-      const res = await fetch(base + '/vendor-desk/decision', {
+      // Form-encoded body: a "simple" request that a sandboxed page can send without a preflight.
+      const res = await fetch(apiUrl('vendor-desk/decision'), {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-desk-key': key },
-        body: JSON.stringify({ vendor_id: v.vendor_id, decision, note, reviewer, notify }),
+        body: new URLSearchParams({ payload: JSON.stringify({ vendor_id: v.vendor_id, decision, note, reviewer, notify }) }),
       });
+      if (res.status === 401) throw new Error(SESSION_ENDED);
       const out = await res.json().catch(() => ({}));
       if (!res.ok || out.ok === false) throw new Error(out.error || 'the server replied with an error');
     }
@@ -572,28 +568,14 @@ function toast(msg) {
 }
 
 function openSettings(hint) {
-  $('#sBase').value = store.get('base', '');
-  $('#sKey').value = store.get('key', '');
   $('#sName').value = store.get('name', '');
   $('#settingsHint').textContent = hint || 'Your name is saved with every decision you make.';
   $('#settings').showModal();
   $('#sName').focus();
 }
 
-$('#settingsForm').addEventListener('submit', e => {
-  const connection = () => { const { base, key } = api(); return !base || store.get('mode', '') === 'demo' ? 'demo' : base + '|' + key; };
-  const before = connection();
-  store.set('name', $('#sName').value.trim());
-  if (e.submitter?.value === 'save') {
-    store.set('base', $('#sBase').value.trim());
-    store.set('key', $('#sKey').value.trim());
-    store.set('mode', $('#sBase').value.trim() ? 'live' : 'demo');
-  } else {
-    store.set('mode', 'demo');
-  }
-  // Only a new connection reloads; adding a name keeps the reviewer where they were.
-  if (connection() !== before) load();
-});
+// Saving a name keeps the reviewer exactly where they were.
+$('#settingsForm').addEventListener('submit', () => store.set('name', $('#sName').value.trim()));
 
 document.addEventListener('click', e => {
   const t = e.target.closest('button');

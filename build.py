@@ -43,7 +43,8 @@ def code(name):
     if src.startswith("// @include _helpers.js"):
         src = (CODE / "_helpers.js").read_text() + "\n" + src.split("\n", 1)[1]
     fields = [{"key": f["key"], "title": f["title"]} for f in FORM["fields"]]
-    return src.replace("/*@form_fields*/[]", json.dumps(fields, indent=2))
+    src = src.replace("/*@form_fields*/[]", json.dumps(fields, indent=2))
+    return src.replace("/*@page_html*/''", json.dumps((ROOT / "frontend" / "index.html").read_text()))
 
 
 # ---------- node builders ----------
@@ -313,23 +314,46 @@ def build_assess(cfg):
 
 def build_review(cfg):
     wf = "review"
-    hook = lambda name, method, path: node(wf, name, "n8n-nodes-base.webhook", 2, {
-        "httpMethod": method, "path": path, "authentication": "headerAuth",
-        "responseMode": "responseNode", "options": {"allowedOrigins": "*"}},
-        webhookId=str(uuid.uuid5(NS, wf + "/hook/" + name)),
-        notes="Credential: Header Auth 'Vendor Desk key' (Name: x-desk-key)")
-    respond = lambda name, body, code=200: node(wf, name, "n8n-nodes-base.respondToWebhook", 1.1, {
-        "respondWith": "json", "responseBody": body, "options": {"responseCode": code}})
+
+    def hook(name, method, path, auth="none"):
+        return node(wf, name, "n8n-nodes-base.webhook", 2, {
+            "httpMethod": method, "path": path, "authentication": auth,
+            "responseMode": "responseNode", "options": {"allowedOrigins": "*"}},
+            webhookId=str(uuid.uuid5(NS, wf + "/hook/" + name)))
+
+    def respond(name, body, code=200):
+        return node(wf, name, "n8n-nodes-base.respondToWebhook", 1.1, {
+            "respondWith": "json", "responseBody": body, "options": {"responseCode": code}})
+
     saved = "={{ JSON.stringify({ ok: true, vendor_id: $('Check Decision').first().json.vendor_id, status: $('Check Decision').first().json.status, emailed: %s }) }}"
+    session_ended = "={{ JSON.stringify({ ok: false, error: 'session ended' }) }}"
     nodes = [
+        # The page itself, behind a browser login.
+        node(wf, "Page Webhook", "n8n-nodes-base.webhook", 2, {
+            "httpMethod": "GET", "path": "vendor-desk", "authentication": "basicAuth",
+            "responseMode": "responseNode", "options": {}},
+            webhookId=str(uuid.uuid5(NS, wf + "/hook/page")),
+            notes="Credential: Basic Auth 'Vendor Desk login' (the username and password reviewers type)"),
+        config_node(wf, cfg, ["webhook_base", "company_short", "desk_name"]),
+        code_node(wf, "Build Page", "review-page.js"),
+        node(wf, "Send Page", "n8n-nodes-base.respondToWebhook", 1.1, {
+            "respondWith": "text", "responseBody": "={{ $json.html }}",
+            "options": {"responseHeaders": {"entries": [{"name": "Content-Type", "value": "text/html; charset=utf-8"}]}}}),
+
+        # Data for the page: the vendor list.
         hook("List Webhook", "GET", "vendor-desk/vendors"),
+        code_node(wf, "Check Pass (list)", "review-auth.js"),
+        if_true(wf, "Pass OK? (list)", "={{ $json.ok }}"),
         table_get(wf, "Read Vendors", alwaysOutputData=True),
         code_node(wf, "Shape for Desk", "review-list.js"),
         respond("Send List", "={{ JSON.stringify($json) }}"),
+        respond("No Pass (list)", session_ended, 401),
 
+        # A reviewer's decision.
         hook("Decision Webhook", "POST", "vendor-desk/decision"),
-        config_node(wf, cfg, ["company_short", "desk_name"]),
-        table_get(wf, "Find Vendor", by_vendor_id("={{ $('Decision Webhook').first().json.body.vendor_id }}"),
+        code_node(wf, "Check Pass (decision)", "review-auth.js"),
+        if_true(wf, "Pass OK? (decision)", "={{ $json.ok }}"),
+        table_get(wf, "Find Vendor", by_vendor_id("={{ (() => { try { return JSON.parse($('Decision Webhook').first().json.body.payload).vendor_id } catch (e) { return '' } })() }}"),
                   alwaysOutputData=True),
         code_node(wf, "Check Decision", "review-check.js"),
         if_true(wf, "Valid?", "={{ $json.ok }}"),
@@ -346,21 +370,30 @@ def build_review(cfg):
         respond("Saved (sent)", saved % "true"),
         respond("Saved, no email", saved % "false"),
         respond("Rejected Request", "={{ JSON.stringify({ ok: false, error: $json.error }) }}", 400),
-        sticky(wf, "About", "## 3 · Review API\nTwo webhooks for the review page, behind one header key. **GET vendor-desk/vendors** lists assessed vendors. **POST vendor-desk/decision** saves approve / ask for more / reject and replies to the vendor in their original email thread.", [-40, -300], 620, 200),
+        respond("No Pass (decision)", session_ended, 401),
+        sticky(wf, "About", "## 3 · Review page\n**GET vendor-desk** serves the review page behind a browser login and gives it a 12-hour session pass. **vendor-desk/vendors** lists assessed vendors; **vendor-desk/decision** saves approve / ask for more / reject and replies to the vendor in their original email thread. Both need a live pass.", [-40, -300], 640, 200),
     ]
-    edges = [("List Webhook", "Read Vendors"), ("Read Vendors", "Shape for Desk"), ("Shape for Desk", "Send List"),
-             ("Decision Webhook", "Config"), ("Config", "Find Vendor"), ("Find Vendor", "Check Decision"),
-             ("Check Decision", "Valid?"), ("Valid?", "Decision Row", 0), ("Valid?", "Rejected Request", 1),
+    edges = [("Page Webhook", "Config"), ("Config", "Build Page"), ("Build Page", "Send Page"),
+             ("List Webhook", "Check Pass (list)"), ("Check Pass (list)", "Pass OK? (list)"),
+             ("Pass OK? (list)", "Read Vendors", 0), ("Pass OK? (list)", "No Pass (list)", 1),
+             ("Read Vendors", "Shape for Desk"), ("Shape for Desk", "Send List"),
+             ("Decision Webhook", "Check Pass (decision)"), ("Check Pass (decision)", "Pass OK? (decision)"),
+             ("Pass OK? (decision)", "Find Vendor", 0), ("Pass OK? (decision)", "No Pass (decision)", 1),
+             ("Find Vendor", "Check Decision"), ("Check Decision", "Valid?"),
+             ("Valid?", "Decision Row", 0), ("Valid?", "Rejected Request", 1),
              ("Decision Row", "Save Decision"), ("Save Decision", "Email vendor?"),
              ("Email vendor?", "Have their thread?", 0), ("Email vendor?", "Saved, no email", 1),
              ("Have their thread?", "Reply in Thread", 0), ("Have their thread?", "Email Vendor", 1),
              ("Reply in Thread", "Saved"), ("Email Vendor", "Saved (sent)")]
-    layout = {"List Webhook": (0, 0), "Read Vendors": (1, 0), "Shape for Desk": (2, 0), "Send List": (3, 0),
-              "Decision Webhook": (0, 1.5), "Config": (1, 1.5), "Find Vendor": (2, 1.5), "Check Decision": (3, 1.5),
-              "Valid?": (4, 1.5), "Decision Row": (5, 1.2), "Save Decision": (6, 1.2), "Email vendor?": (7, 1.2),
-              "Have their thread?": (8, 1), "Reply in Thread": (9, 0.8), "Email Vendor": (9, 1.4),
-              "Saved": (10, 0.8), "Saved (sent)": (10, 1.4), "Saved, no email": (8, 1.9), "Rejected Request": (5, 2.2)}
-    return workflow("EBM Vendors · 3 Review API", nodes, edges, layout)
+    layout = {"Page Webhook": (0, 0), "Config": (1, 0), "Build Page": (2, 0), "Send Page": (3, 0),
+              "List Webhook": (0, 1.2), "Check Pass (list)": (1, 1.2), "Pass OK? (list)": (2, 1.2),
+              "Read Vendors": (3, 1.1), "Shape for Desk": (4, 1.1), "Send List": (5, 1.1), "No Pass (list)": (3, 1.7),
+              "Decision Webhook": (0, 2.6), "Check Pass (decision)": (1, 2.6), "Pass OK? (decision)": (2, 2.6),
+              "Find Vendor": (3, 2.5), "Check Decision": (4, 2.5), "Valid?": (5, 2.5), "No Pass (decision)": (3, 3.1),
+              "Decision Row": (6, 2.3), "Save Decision": (7, 2.3), "Email vendor?": (8, 2.3),
+              "Have their thread?": (9, 2.1), "Reply in Thread": (10, 1.9), "Email Vendor": (10, 2.5),
+              "Saved": (11, 1.9), "Saved (sent)": (11, 2.5), "Saved, no email": (9, 2.9), "Rejected Request": (6, 3.1)}
+    return workflow("EBM Vendors · 3 Review Page", nodes, edges, layout)
 
 
 def main():

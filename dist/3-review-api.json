@@ -1,9 +1,9 @@
 {
-  "name": "EBM Vendors · 3 Review API",
+  "name": "EBM Vendors · 3 Review Page",
   "nodes": [
     {
-      "id": "42c5d552-e14d-55d9-8996-87b7faa76bdb",
-      "name": "List Webhook",
+      "id": "f16075b1-62b1-5be7-8ca5-995bb1136ef8",
+      "name": "Page Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
@@ -12,88 +12,13 @@
       ],
       "parameters": {
         "httpMethod": "GET",
-        "path": "vendor-desk/vendors",
-        "authentication": "headerAuth",
+        "path": "vendor-desk",
+        "authentication": "basicAuth",
         "responseMode": "responseNode",
-        "options": {
-          "allowedOrigins": "*"
-        }
+        "options": {}
       },
-      "webhookId": "3e96f026-c290-5f96-90b6-dc868805ec88",
-      "notes": "Credential: Header Auth 'Vendor Desk key' (Name: x-desk-key)"
-    },
-    {
-      "id": "c7820756-f07e-5513-9c3e-c89584cc788b",
-      "name": "Read Vendors",
-      "type": "n8n-nodes-base.dataTable",
-      "typeVersion": 1,
-      "position": [
-        240,
-        0
-      ],
-      "parameters": {
-        "resource": "row",
-        "operation": "get",
-        "dataTableId": {
-          "__rl": true,
-          "mode": "name",
-          "value": "ebm_vendors"
-        },
-        "matchType": "allConditions",
-        "returnAll": true
-      },
-      "alwaysOutputData": true
-    },
-    {
-      "id": "711c4d5d-e179-575e-ae20-ce16d6a1da93",
-      "name": "Shape for Desk",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        480,
-        0
-      ],
-      "parameters": {
-        "jsCode": "// Turns \"ebm_vendors\" rows into the vendor objects the review page shows.\n// Only vendors who have submitted the form (and so have an assessment) are listed.\n\nfunction parse(s) {\n  try { return s ? JSON.parse(s) : null; } catch (e) { return null; }\n}\nconst list = x => (Array.isArray(x) ? x : []);\n\nconst vendors = $input.all()\n  .map(i => i.json)\n  .filter(r => r.vendor_id && r.assessment)\n  .map(r => {\n    const a = parse(r.assessment) || {};\n    return {\n      ...a,\n      vendor_id: r.vendor_id,\n      status: r.status || 'pending_review',\n      reviewer: r.reviewer || null,\n      reviewer_note: r.reviewer_note || null,\n      decided_at: r.decided_at || null,\n      score: r.score == null || r.score === '' ? null : Number(r.score),\n      tier: r.tier || a.tier,\n      blocked: r.blocked === true || r.blocked === 'true',\n      criteria: list(a.criteria),\n      knockouts: list(a.knockouts),\n      red_flags: list(a.red_flags),\n      web_findings: list(a.web_findings),\n      questions: list(a.questions),\n      form: a.form || {},\n      official_checks: a.official_checks || {},\n      raw_model_output: undefined,\n    };\n  });\n\nreturn [{ json: { vendors, fetched_at: new Date().toISOString() } }];\n"
-      }
-    },
-    {
-      "id": "bdb2f247-4b23-5d73-bfd4-53d419e32ffc",
-      "name": "Send List",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        720,
-        0
-      ],
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ JSON.stringify($json) }}",
-        "options": {
-          "responseCode": 200
-        }
-      }
-    },
-    {
-      "id": "5110878f-f542-5e27-ba8f-8e305e396504",
-      "name": "Decision Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        0,
-        300.0
-      ],
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "vendor-desk/decision",
-        "authentication": "headerAuth",
-        "responseMode": "responseNode",
-        "options": {
-          "allowedOrigins": "*"
-        }
-      },
-      "webhookId": "bbfae759-a9a2-5872-9283-bd1121f726f8",
-      "notes": "Credential: Header Auth 'Vendor Desk key' (Name: x-desk-key)"
+      "webhookId": "09c3f374-25fb-525b-9a0c-59116b479039",
+      "notes": "Credential: Basic Auth 'Vendor Desk login' (the username and password reviewers type)"
     },
     {
       "id": "34bf9189-199f-51c3-aafa-51fce5566340",
@@ -102,11 +27,17 @@
       "typeVersion": 3.4,
       "position": [
         240,
-        300.0
+        0
       ],
       "parameters": {
         "assignments": {
           "assignments": [
+            {
+              "id": "da657ac6-241a-5733-9a4c-b90d1bc3b385",
+              "name": "webhook_base",
+              "value": "https://jbsalpha.app.n8n.cloud/webhook",
+              "type": "string"
+            },
             {
               "id": "a5f35b98-a2cd-5c9c-97ba-e3889367c384",
               "name": "company_short",
@@ -127,13 +58,253 @@
       "notes": "All settings for this workflow live here."
     },
     {
+      "id": "76781cb6-2dd2-50a4-8fb7-31b52e262a9b",
+      "name": "Build Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Serves the review page. The browser has already passed the page's Basic Auth\n// login; here we hand it a session pass that the page sends with each data call,\n// so the data webhooks need no password of their own.\n\nconst PAGE = \"<!doctype html>\\n<html lang=\\\"en\\\">\\n<head>\\n<meta charset=\\\"utf-8\\\">\\n<meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1\\\">\\n<title>Vendor Validation System</title>\\n<link rel=\\\"preconnect\\\" href=\\\"https://fonts.googleapis.com\\\">\\n<link rel=\\\"preconnect\\\" href=\\\"https://fonts.gstatic.com\\\" crossorigin>\\n<link href=\\\"https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap\\\" rel=\\\"stylesheet\\\">\\n<style>\\n:root {\\n  --navy: #343579;\\n  --navy-deep: #28316a;\\n  --sky: #4ec3ec;\\n  --sky-soft: #eef8fd;\\n  --ink: #212529;\\n  --body: #4b4747;\\n  --muted: #7d7878;\\n  --line: #ece7e3;\\n  --warm: #f7f4f2;\\n  --good: #18604d;\\n  --good-soft: #dafcf5;\\n  --check: #7a5b00;\\n  --check-soft: #fff4c7;\\n  --no: #c42e1c;\\n  --no-soft: #fdeeec;\\n  --font: \\\"Figtree\\\", \\\"Euclid Circular A\\\", system-ui, sans-serif;\\n}\\n* { box-sizing: border-box; }\\nhtml, body { margin: 0; }\\nbody { background: #fff; color: var(--ink); font: 400 18px/1.6 var(--font); -webkit-font-smoothing: antialiased; }\\na { color: var(--navy); }\\nbutton, input, textarea { font: inherit; color: inherit; }\\n:focus-visible { outline: 3px solid var(--sky); outline-offset: 3px; border-radius: 8px; }\\n\\nheader { border-bottom: 1px solid var(--line); }\\n.bar { max-width: 720px; margin: 0 auto; padding: 16px 24px; display: flex; align-items: center; gap: 14px; }\\n.home { display: flex; align-items: center; gap: 12px; color: var(--navy); background: none; border: 0; padding: 0; cursor: pointer; }\\n.home b { font-size: 24px; letter-spacing: .02em; }\\n.home i { width: 1.5px; height: 28px; background: var(--navy); }\\n.home span { font-size: 18px; font-weight: 600; white-space: nowrap; text-align: left; }\\n.settings { margin-left: auto; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }\\n\\nmain { max-width: 720px; margin: 0 auto; padding: 48px 24px 96px; }\\nh1 { font-size: 40px; line-height: 1.15; font-weight: 700; color: var(--navy); margin: 0; letter-spacing: -.02em; }\\n.subhead { font-size: 26px; line-height: 1.3; font-weight: 600; color: var(--ink); margin: 18px 0 0; }\\n.lead { font-size: 20px; color: var(--body); margin: 8px 0 0; }\\n\\n.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; border-radius: 999px; padding: 16px 32px; font-weight: 600; font-size: 19px; cursor: pointer; border: 2px solid var(--navy); background: var(--navy); color: #fff; }\\n.btn:hover { background: var(--navy-deep); }\\n.btn.light { background: #fff; color: var(--navy); }\\n.btn.light:hover { background: var(--sky-soft); }\\n.btn:disabled { opacity: .5; cursor: progress; }\\n.link { background: none; border: 0; padding: 0; color: var(--navy); font-weight: 600; cursor: pointer; font-size: 17px; text-decoration: underline; text-underline-offset: 4px; }\\n.link.grey { color: var(--muted); font-weight: 500; }\\n\\n.label { display: inline-block; font-size: 15px; font-weight: 700; padding: 4px 14px; border-radius: 999px; white-space: nowrap; }\\n.label.good { background: var(--good-soft); color: var(--good); }\\n.label.check { background: var(--check-soft); color: var(--check); }\\n.label.no { background: var(--no-soft); color: var(--no); }\\n.label.done { background: var(--warm); color: var(--body); }\\n\\n/* ---------- home ---------- */\\n.start { margin-top: 32px; }\\n.list { margin-top: 48px; }\\n.card { display: block; width: 100%; text-align: left; background: #fff; border: 2px solid var(--line); border-radius: 18px; padding: 20px 24px; cursor: pointer; margin-bottom: 14px; }\\n.card:hover { border-color: var(--navy); }\\n.card .top { display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; }\\n.card .name { font-size: 21px; font-weight: 600; color: var(--navy); }\\n.card .why { margin-top: 6px; color: var(--body); font-size: 17px; }\\n.foot { margin-top: 36px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }\\n.note-sample { font-size: 16px; color: var(--muted); }\\n\\n/* ---------- review ---------- */\\n.crumbs { display: flex; justify-content: space-between; align-items: center; font-size: 17px; color: var(--muted); }\\n.steps { display: flex; gap: 8px; margin: 28px 0 40px; }\\n.steps button { flex: 1; text-align: left; background: none; border: 0; border-top: 5px solid var(--line); padding: 10px 0 0; cursor: pointer; font-size: 17px; color: var(--muted); }\\n.steps button.past { border-color: #b7dff0; color: var(--body); }\\n.steps button.now { border-color: var(--navy); color: var(--navy); font-weight: 700; }\\n.name-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 8px; }\\n.what-they-do { font-size: 19px; color: var(--body); margin-top: 8px; }\\n.box { margin-top: 28px; padding: 26px 28px; border-radius: 20px; background: var(--sky-soft); }\\n.box.no { background: var(--no-soft); }\\n.box h2 { font-size: 22px; margin: 0 0 8px; color: var(--navy); }\\n.box.no h2 { color: var(--no); }\\n.box p { margin: 0; font-size: 19px; }\\n.box ul { margin: 0; padding-left: 22px; font-size: 19px; }\\n.score-line { margin-top: 28px; font-size: 19px; color: var(--body); }\\n.score-line b { font-size: 34px; color: var(--navy); }\\n.actions { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; margin-top: 40px; }\\n\\nh2.sec { font-size: 24px; color: var(--navy); margin: 0 0 14px; }\\n.sec-wrap + .sec-wrap { margin-top: 44px; }\\n.check-list { margin: 0; padding: 0; list-style: none; }\\n.check-list li { padding: 14px 0; border-top: 1px solid var(--line); font-size: 18px; }\\n.check-list li:last-child { border-bottom: 1px solid var(--line); }\\n.mark { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }\\n.mark .t { font-weight: 600; }\\n.mark .w { font-weight: 700; font-size: 16px; white-space: nowrap; }\\n.mark .w.good { color: var(--good); }\\n.mark .w.ok { color: var(--check); }\\n.mark .w.weak { color: var(--no); }\\n.small { font-size: 16px; color: var(--body); margin-top: 2px; }\\ndetails summary { cursor: pointer; font-size: 19px; font-weight: 600; color: var(--navy); }\\ndl { margin: 16px 0 0; }\\ndt { font-size: 16px; color: var(--muted); margin-top: 12px; }\\ndd { margin: 0; white-space: pre-line; }\\n\\n.choices { display: grid; gap: 14px; }\\n.choice { display: flex; gap: 16px; align-items: center; width: 100%; text-align: left; background: #fff; border: 2px solid var(--line); border-radius: 18px; padding: 20px 22px; cursor: pointer; }\\n.choice:hover { border-color: #b7dff0; }\\n.choice .dot { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #cfc8c3; flex: none; }\\n.choice[aria-checked=\\\"true\\\"] { border-color: var(--navy); background: var(--sky-soft); }\\n.choice[aria-checked=\\\"true\\\"] .dot { border: 8px solid var(--navy); }\\n.choice .t { font-size: 20px; font-weight: 600; display: block; }\\n.choice .d { font-size: 16px; color: var(--body); }\\n.ours { font-size: 14px; font-weight: 700; color: var(--good); background: var(--good-soft); padding: 2px 10px; border-radius: 999px; margin-left: 8px; vertical-align: 2px; }\\n.write { margin-top: 30px; }\\n.write label { display: block; font-size: 20px; font-weight: 600; }\\n.write .hint { font-size: 16px; color: var(--muted); margin: 2px 0 10px; }\\n.write textarea { width: 100%; min-height: 140px; border: 2px solid var(--line); border-radius: 14px; padding: 14px 16px; resize: vertical; font-size: 18px; }\\n.write textarea:focus { border-color: var(--navy); outline: none; }\\n.tick { display: flex; gap: 10px; align-items: center; margin-top: 14px; font-size: 17px; }\\n.tick input { width: 22px; height: 22px; accent-color: var(--navy); }\\n.err { color: var(--no); font-size: 17px; margin-top: 14px; font-weight: 500; }\\n.decided { padding: 26px 28px; border-radius: 20px; background: var(--warm); font-size: 19px; }\\n\\n.site-foot { border-top: 1px solid var(--line); text-align: center; color: var(--muted); font-size: 15px; padding: 22px 16px 28px; }\\n\\ndialog { border: 0; border-radius: 22px; padding: 30px; width: min(480px, calc(100vw - 32px)); box-shadow: 0 24px 60px -20px rgba(40,49,106,.45); }\\ndialog::backdrop { background: rgba(40,49,106,.3); }\\ndialog h2 { font-size: 24px; color: var(--navy); margin: 0 0 6px; }\\ndialog p { margin: 0 0 6px; color: var(--body); font-size: 17px; }\\ndialog label { display: block; font-size: 16px; font-weight: 600; margin: 16px 0 6px; }\\ndialog input { width: 100%; border: 2px solid var(--line); border-radius: 12px; padding: 11px 14px; font-size: 17px; }\\ndialog .btns { display: flex; justify-content: flex-end; gap: 20px; align-items: center; margin-top: 26px; }\\n\\n.toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); opacity: 0; background: var(--navy); color: #fff; padding: 16px 26px; border-radius: 16px; font-size: 18px; transition: .25s; pointer-events: none; max-width: calc(100vw - 32px); }\\n.toast.show { opacity: 1; transform: translate(-50%, 0); }\\n\\n@media (max-width: 640px) {\\n  body { font-size: 17px; }\\n  main { padding: 32px 18px 80px; }\\n  .bar { padding: 14px 18px; }\\n  .home { gap: 8px; }\\n  .home b { font-size: 19px; }\\n  .home span { font-size: 15px; }\\n  .home svg { width: 24px; }\\n  h1 { font-size: 31px; }\\n  .lead { font-size: 18px; }\\n  .subhead { font-size: 22px; }\\n  .btn { width: 100%; }\\n  .box { padding: 20px; }\\n  .steps button { font-size: 15px; }\\n  .toast { left: 16px; right: 16px; transform: translateY(20px); max-width: none; }\\n  .toast.show { transform: none; }\\n}\\n</style>\\n</head>\\n<body>\\n\\n<header>\\n  <div class=\\\"bar\\\">\\n    <button class=\\\"home\\\" type=\\\"button\\\" data-home>\\n      <svg width=\\\"30\\\" height=\\\"24\\\" viewBox=\\\"0 0 30 24\\\" aria-hidden=\\\"true\\\"><circle cx=\\\"18\\\" cy=\\\"5\\\" r=\\\"4.2\\\" fill=\\\"#4ec3ec\\\"/><path d=\\\"M2 9c5 0 9 2 11 6 2-4 6-6 11-6-3 6-7 11-11 14C9 20 5 15 2 9z\\\" fill=\\\"#343579\\\"/></svg>\\n      <b>EBM</b>\\n    </button>\\n    <button class=\\\"settings\\\" type=\\\"button\\\" data-settings>Settings</button>\\n  </div>\\n</header>\\n\\n<main id=\\\"app\\\"><p class=\\\"lead\\\">Loading\\u2026</p></main>\\n\\n<footer class=\\\"site-foot\\\">Powered by JBS Global</footer>\\n\\n<dialog id=\\\"settings\\\">\\n  <form method=\\\"dialog\\\" id=\\\"settingsForm\\\">\\n    <h2>Your details</h2>\\n    <p id=\\\"settingsHint\\\">Your name is saved with every decision you make.</p>\\n    <label for=\\\"sName\\\">Your name</label>\\n    <input id=\\\"sName\\\" autocomplete=\\\"name\\\">\\n    <div class=\\\"btns\\\">\\n      <button class=\\\"btn\\\" value=\\\"save\\\" type=\\\"submit\\\">Save</button>\\n    </div>\\n  </form>\\n</dialog>\\n\\n<div class=\\\"toast\\\" id=\\\"toast\\\" role=\\\"status\\\"></div>\\n\\n<script>\\n/* ======================================================================\\n   Practice data, shown until IT connects the page to n8n.\\n   Written the way the model is asked to write: plain words, no rule codes.\\n   ====================================================================== */\\nconst SAMPLE = [\\n  {\\n    vendor_id: 'EBM-V-1EJFWS6', company_name: 'Al-Noor Packaging', contact_name: 'Imran Siddiqui', contact_email: 'imran@alnoorpack.com.pk',\\n    category: 'Packaging (food contact)', city: 'Lahore', years_in_business: '18', score: 88, tier: 'A', blocked: false,\\n    recommendation: 'approve_with_conditions', status: 'pending_review',\\n    summary: 'A well-run packaging company with all the food safety certificates we ask for. They can make far more than we need. We already have three packaging suppliers, so only take them on if their price is better.',\\n    criteria: [\\n      { id: 'C1', score: 5, evidence: 'All tax and company registration numbers given and they match.' },\\n      { id: 'C2', score: 5, evidence: 'Holds the two strongest food safety certificates, valid until 2027.' },\\n      { id: 'C3', score: 5, evidence: 'In business for 18 years with healthy yearly sales.' },\\n      { id: 'C4', score: 5, evidence: 'Can make more than three times what we need each month.' },\\n      { id: 'C5', score: 5, evidence: 'Passed a workplace audit this year and has an environmental certificate.' },\\n      { id: 'C6', score: 3, evidence: 'Has a proper website. Nothing good or bad in the news.' },\\n      { id: 'C7', score: 4, evidence: 'Offers 60 days to pay. Gave client names, not yet called.' },\\n    ],\\n    knockouts: [], red_flags: ['We already have three packaging suppliers. Only add them if their price or quality is clearly better.'],\\n    web_findings: [{ title: 'Their certificates page', url: 'https://alnoorpack.com.pk/certifications', takeaway: 'Certificate numbers on their website match what they told us.' }],\\n    questions: ['Copies of their food safety certificates', 'Two client references with phone numbers', 'Their price list'],\\n    form: { 'What they supply': 'Printed wrappers, cartons and shipping boxes', Owners: 'Imran Siddiqui, Ayesha Siddiqui', 'Monthly capacity': '400 tonnes of wrapper film, 6 million cartons', 'Main clients': 'Riverbend Foods, Mehran Snacks, Crescent Dairies', 'Payment terms': '60 days', 'Related to anyone at EBM?': 'No', 'Any court cases or bans?': 'No' },\\n  },\\n  {\\n    vendor_id: 'EBM-V-1X9K5C8', company_name: 'SwiftHaul Logistics', contact_name: 'Rabia Khan', contact_email: 'rabia@swifthaul.pk',\\n    category: 'Transport', city: 'Karachi', years_in_business: '9', score: 71, tier: 'B', blocked: false,\\n    recommendation: 'approve_with_conditions', status: 'pending_review',\\n    summary: 'A trucking company with its own fleet on the Karachi to Lahore route, where we need another carrier. One of their owners has a cousin working in our Port Qasim warehouse. They told us about it, which is fine, but that person should not choose which carrier gets our loads.',\\n    criteria: [\\n      { id: 'C1', score: 5, evidence: 'All registration numbers given.' },\\n      { id: 'C2', score: 3, evidence: 'Has a quality certificate. Food safety certificates are not needed for transport.' },\\n      { id: 'C3', score: 3, evidence: 'Nine years in business, medium-sized.' },\\n      { id: 'C4', score: 5, evidence: 'Around 400 trips a month. We need about 90.' },\\n      { id: 'C5', score: 3, evidence: 'Has an environmental certificate, no workplace audit.' },\\n      { id: 'C6', score: 3, evidence: 'Has a website. Nothing bad found.' },\\n      { id: 'C7', score: 3, evidence: '30 days to pay. Named three clients.' },\\n    ],\\n    knockouts: [], red_flags: [\\\"An owner's cousin works in our Port Qasim warehouse. Ask them to sign a form declaring this.\\\"],\\n    web_findings: [{ title: 'SwiftHaul website', url: 'https://swifthaul.pk', takeaway: 'Says they have 140 trucks, same as they told us.' }],\\n    questions: ['List of their trucks', 'Proof of insurance for goods on the road', 'Signed form about the family link at EBM'],\\n    form: { 'What they supply': 'Trucking from Karachi to Lahore, 2 warehouses', Owners: 'Omar Farooq, Rabia Khan', 'Monthly capacity': '140 trucks, about 400 trips', 'Payment terms': '30 days', 'Related to anyone at EBM?': \\\"Yes: Omar Farooq's cousin Bilal works in our Port Qasim warehouse\\\", 'Any court cases or bans?': 'No' },\\n  },\\n  {\\n    vendor_id: 'EBM-V-0USU0UC', company_name: 'Chenab Flour Mills', contact_name: 'Khalid Javed', contact_email: 'khalid@chenabflour.pk',\\n    category: 'Ingredients', city: 'Faisalabad', years_in_business: '25', score: 81, tier: 'Blocked', blocked: true,\\n    recommendation: 'send_back', status: 'pending_review',\\n    summary: 'A large, experienced flour mill in the area where we want another supplier. The only problem is that their Halal certificate ran out in August. Their renewal check is on 12 November, so ask them to send the new certificate.',\\n    criteria: [\\n      { id: 'C1', score: 5, evidence: 'All registration numbers given.' },\\n      { id: 'C2', score: 4, evidence: 'Food safety certificates valid until May 2027.' },\\n      { id: 'C3', score: 5, evidence: '25 years in business, large yearly sales.' },\\n      { id: 'C4', score: 4, evidence: 'Can supply 2,500 tonnes a month. We need 1,800.' },\\n      { id: 'C5', score: 2, evidence: 'No workplace or environmental certificates.' },\\n      { id: 'C6', score: 3, evidence: 'Listed in a local business directory. Nothing bad found.' },\\n      { id: 'C7', score: 3, evidence: '30 days to pay.' },\\n    ],\\n    knockouts: [{ reason: 'Their Halal certificate expired on 31 August 2026. We cannot buy ingredients without a valid one.' }],\\n    red_flags: [], web_findings: [{ title: 'Faisalabad business directory', url: '', takeaway: 'Listed as a flour mill since 2003.' }],\\n    questions: ['Their new Halal certificate once renewed', 'Recent lab test results for their flour'],\\n    form: { 'What they supply': 'Flour and semolina for biscuits', Owners: 'Javed Iqbal, Khalid Javed', Certificates: 'Food safety valid to May 2027. Halal expired 31 Aug 2026, renewal check on 12 Nov 2026.', 'Monthly capacity': '2,500 tonnes', 'Related to anyone at EBM?': 'No', 'Any court cases or bans?': 'No' },\\n  },\\n  {\\n    vendor_id: 'EBM-V-1KOL3YA', company_name: 'Sunrise Edible Oils', contact_name: 'Saad Tariq', contact_email: 'saad@sunriseedibleoils.pk',\\n    category: 'Ingredients', city: 'Sheikhupura', years_in_business: '3', score: 58, tier: 'Blocked', blocked: true,\\n    recommendation: 'reject', status: 'pending_review',\\n    summary: 'One of their owners, Tariq Mehmood Butt, ran a company we banned in 2024 for selling mixed, impure cooking fat. That ban covers any company he runs until 2029. They also said \\\"No\\\" when asked about past bans. We suggest rejecting them.',\\n    criteria: [\\n      { id: 'C1', score: 5, evidence: 'All registration numbers given.' },\\n      { id: 'C2', score: 4, evidence: 'Has a food safety certificate.' },\\n      { id: 'C3', score: 2, evidence: 'Only 3 years in business.' },\\n      { id: 'C4', score: 5, evidence: 'Can supply twice what we need.' },\\n      { id: 'C5', score: 1, evidence: 'Nothing on record.' },\\n      { id: 'C6', score: 0, evidence: 'An owner is linked to a company we banned.' },\\n      { id: 'C7', score: 2, evidence: 'Would not name their clients.' },\\n    ],\\n    knockouts: [{ reason: 'An owner, Tariq Mehmood Butt, ran Sunrise Agro Industries, which we banned in 2024. The ban covers his companies until 2029.' }],\\n    red_flags: ['They answered \\\"No\\\" to past bans, which is not true.', 'They would not name their clients.'],\\n    web_findings: [], questions: [],\\n    form: { 'What they supply': 'Baking fat, margarine, cooking oil', Owners: 'Tariq Mehmood Butt, Saad Tariq', 'Monthly capacity': '900 tonnes', 'Main clients': 'Names on request', 'Related to anyone at EBM?': 'No', 'Any court cases or bans?': 'No' },\\n  },\\n  {\\n    vendor_id: 'EBM-V-10ND5JX', company_name: 'Seaview Cocoa & Commodities', contact_name: 'Adnan Memon', contact_email: 'adnan.seaview@example.com',\\n    category: 'Ingredients', city: 'Karachi', years_in_business: '1', score: 23, tier: 'Blocked', blocked: true,\\n    recommendation: 'reject', status: 'pending_review',\\n    summary: 'A one-person trading business, one year old, with no food safety or Halal certificate. They want full payment up front and can only supply a third of what we need. We suggest rejecting them.',\\n    criteria: [\\n      { id: 'C1', score: 2, evidence: 'Only a tax number. No company registration.' },\\n      { id: 'C2', score: 0, evidence: 'No food safety certificate at all.' },\\n      { id: 'C3', score: 1, evidence: 'One year old, small, wants payment up front.' },\\n      { id: 'C4', score: 1, evidence: 'Can supply 15 to 20 tonnes. We need 60.' },\\n      { id: 'C5', score: 1, evidence: 'Nothing on record.' },\\n      { id: 'C6', score: 2, evidence: 'No website and nothing found online.' },\\n      { id: 'C7', score: 1, evidence: 'Full payment up front only.' },\\n    ],\\n    knockouts: [{ reason: 'No food safety certificate.' }, { reason: 'No Halal certificate.' }],\\n    red_flags: ['Asked to continue the conversation on WhatsApp.'], web_findings: [], questions: [],\\n    form: { 'What they supply': 'Cocoa powder (imported)', Owners: 'Adnan Memon (sole owner)', 'Monthly capacity': '15 to 20 tonnes', 'Payment terms': 'Full payment up front' },\\n  },\\n  {\\n    vendor_id: 'EBM-V-0QP7Z1M', company_name: 'Margalla Print House', contact_name: 'Sana Abbasi', contact_email: 'sana@margallaprint.pk',\\n    category: 'Packaging (boxes)', city: 'Islamabad', years_in_business: '12', score: 74, tier: 'B', blocked: false,\\n    recommendation: 'approve_with_conditions', status: 'approved', reviewer: 'Mariyam Sheikh',\\n    reviewer_note: 'Only for shipping boxes. Start with a trial order of 50,000.', decided_at: '2026-10-17T12:40:00Z',\\n    summary: 'Box printer with ten years of experience. Fine for shipping boxes.', criteria: [], knockouts: [], red_flags: [], web_findings: [], questions: [], form: {},\\n  },\\n  {\\n    vendor_id: 'EBM-V-1C2R8TD', company_name: 'Indus Sugar Traders', contact_name: 'Faisal Qureshi', contact_email: 'faisal@indussugar.pk',\\n    category: 'Ingredients', city: 'Hyderabad', years_in_business: '6', score: 57, tier: 'C', blocked: false,\\n    recommendation: 'send_back', status: 'info_requested', reviewer: 'Mariyam Sheikh',\\n    reviewer_note: 'Please send your food safety certificate, your last two years of accounts, and two client references.', decided_at: '2026-10-19T10:05:00Z',\\n    summary: 'Sugar trader with the right certificates but little proof of their finances.', criteria: [], knockouts: [], red_flags: [], web_findings: [], questions: [], form: {},\\n  },\\n];\\n\\n/* ======================================================================\\n   Plain-language labels\\n   ====================================================================== */\\nconst PLAIN_CHECKS = {\\n  C1: 'Properly registered and paying tax',\\n  C2: 'Food safety certificates',\\n  C3: 'Financially stable',\\n  C4: 'Can supply enough',\\n  C5: 'Treats workers and the environment well',\\n  C6: 'Good name online',\\n  C7: 'Payment terms and references',\\n};\\nconst STATUS = { approved: 'Approved', info_requested: 'Asked for more information', rejected: 'Rejected' };\\nconst ADVICE = { approve: 'Approve', approve_with_conditions: 'Approve', send_back: 'Ask them for more information', reject: 'Reject' };\\nconst ADVICE_TO_CHOICE = { approve: 'approved', approve_with_conditions: 'approved', send_back: 'info_requested', reject: 'rejected' };\\n\\nfunction verdict(v) {\\n  if (v.status !== 'pending_review') return { cls: 'done', text: STATUS[v.status] };\\n  if (v.blocked) return { cls: 'no', text: 'Not allowed' };\\n  if (v.score == null || v.tier === 'C' || v.tier === 'D' || v.tier === 'Unscored') return { cls: 'check', text: 'Check first' };\\n  return { cls: 'good', text: 'Looks good' };\\n}\\nconst firstSentence = s => (String(s || '').match(/^.*?[.!?](\\\\s|$)/) || [s])[0].trim();\\nfunction oneLine(v) {\\n  if (v.blocked && v.knockouts.length) return firstSentence(v.knockouts[0].reason);\\n  return firstSentence(v.summary);\\n}\\nconst rate = s => (s >= 4 ? ['good', 'Good'] : s === 3 ? ['ok', 'OK'] : ['weak', 'Weak']);\\n\\n/* ======================================================================\\n   State\\n   ====================================================================== */\\nconst memory = {};\\nconst store = {\\n  get(k, d) { try { return localStorage.getItem('vendorDesk.' + k) ?? memory[k] ?? d; } catch (e) { return memory[k] ?? d; } },\\n  set(k, v) { memory[k] = v; try { localStorage.setItem('vendorDesk.' + k, v); } catch (e) {} },\\n};\\nconst state = { vendors: [], demo: true, view: 'home', id: null, step: 1, choice: null, drafts: {}, showDone: false };\\nconst $ = s => document.querySelector(s);\\nconst app = $('#app');\\nconst esc = s => String(s ?? '').replace(/[&<>\\\"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\\\"': '&quot;' }[c]));\\n\\n// Good ones first, then ones to check, then ones that are not allowed.\\nconst ORDER = { good: 0, check: 1, no: 2 };\\nconst waiting = () => state.vendors.filter(v => v.status === 'pending_review')\\n  .sort((a, b) => ORDER[verdict(a).cls] - ORDER[verdict(b).cls] || (b.score ?? -1) - (a.score ?? -1));\\n\\n/* ======================================================================\\n   Home\\n   ====================================================================== */\\nfunction renderHome() {\\n  const list = waiting();\\n  const done = state.vendors.filter(v => v.status !== 'pending_review');\\n  const card = v => {\\n    const vd = verdict(v);\\n    return `<button class=\\\"card\\\" type=\\\"button\\\" data-open=\\\"${esc(v.vendor_id)}\\\">\\n      <span class=\\\"top\\\"><span class=\\\"name\\\">${esc(v.company_name)}</span><span class=\\\"label ${vd.cls}\\\">${vd.text}</span></span>\\n      <span class=\\\"why\\\" style=\\\"display:block\\\">${esc(oneLine(v))}</span>\\n    </button>`;\\n  };\\n\\n  app.innerHTML = list.length ? `\\n    <h1>Vendor Validation System</h1>\\n    <h2 class=\\\"subhead\\\">${list.length} supplier${list.length > 1 ? 's are' : ' is'} waiting for your decision</h2>\\n    <p class=\\\"lead\\\">We have checked each one for you. Go through them one by one.</p>\\n    <div class=\\\"start\\\"><button class=\\\"btn\\\" type=\\\"button\\\" data-open=\\\"${esc(list[0].vendor_id)}\\\">Start \\u2192</button></div>\\n    <div class=\\\"list\\\">${list.map(card).join('')}</div>\\n    <div class=\\\"foot\\\">\\n      ${done.length ? `<button class=\\\"link grey\\\" type=\\\"button\\\" data-toggle-done>${state.showDone ? 'Hide' : 'Show'} the ${done.length} you have already decided</button>` : ''}\\n      ${state.showDone ? `<div style=\\\"width:100%\\\">${done.map(card).join('')}</div>` : ''}\\n      ${state.demo ? '<span class=\\\"note-sample\\\">You are looking at practice data.</span>' : ''}\\n    </div>`\\n  : `\\n    <h1>Vendor Validation System</h1>\\n    <h2 class=\\\"subhead\\\">All done</h2>\\n    <p class=\\\"lead\\\">No suppliers are waiting. New ones will appear here after they fill in our form.</p>\\n    <div class=\\\"foot\\\">\\n      ${done.length ? `<button class=\\\"link grey\\\" type=\\\"button\\\" data-toggle-done>${state.showDone ? 'Hide' : 'Show'} the ${done.length} you have decided</button>` : ''}\\n      ${state.showDone ? `<div style=\\\"width:100%\\\">${done.map(card).join('')}</div>` : ''}\\n    </div>`;\\n}\\n\\n/* ======================================================================\\n   Review: 1 Summary \\u2192 2 Details \\u2192 3 Your decision\\n   ====================================================================== */\\nfunction renderReview() {\\n  const v = state.vendors.find(x => x.vendor_id === state.id);\\n  if (!v) return go('home');\\n  const left = waiting().length;\\n  const steps = ['1. Summary', '2. Details', '3. Your decision'];\\n  const vd = verdict(v);\\n  app.innerHTML = `\\n    <div class=\\\"crumbs\\\"><button class=\\\"link\\\" type=\\\"button\\\" data-home>\\u2190 Back</button>\\n      <span>${v.status === 'pending_review' ? `${left} waiting` : ''}</span></div>\\n    <div class=\\\"steps\\\">${steps.map((s, i) => `<button type=\\\"button\\\" data-step=\\\"${i + 1}\\\" class=\\\"${state.step === i + 1 ? 'now' : state.step > i + 1 ? 'past' : ''}\\\">${s}</button>`).join('')}</div>\\n    <div class=\\\"name-row\\\"><h1>${esc(v.company_name)}</h1><span class=\\\"label ${vd.cls}\\\">${vd.text}</span></div>\\n    <div class=\\\"what-they-do\\\">${esc(v.category)} from ${esc(v.city)}, in business for ${esc(v.years_in_business)} years</div>\\n    ${[summary, details, decide][state.step - 1](v)}`;\\n}\\n\\nfunction summary(v) {\\n  return `\\n    ${v.blocked ? `<div class=\\\"box no\\\"><h2>Why this supplier is not allowed</h2>\\n      ${v.knockouts.length > 1 ? `<ul>${v.knockouts.map(k => `<li>${esc(k.reason)}</li>`).join('')}</ul>` : `<p>${esc(v.knockouts[0]?.reason)}</p>`}</div>` : ''}\\n    <div class=\\\"box\\\"><h2>Our suggestion: ${esc(ADVICE[v.recommendation] || 'Look at this one yourself')}</h2><p>${esc(v.summary)}</p></div>\\n    ${v.score != null ? `<div class=\\\"score-line\\\">Overall score: <b>${v.score}</b> out of 100</div>` : ''}\\n    <div class=\\\"actions\\\">\\n      <button class=\\\"btn\\\" type=\\\"button\\\" data-step=\\\"2\\\">See the details \\u2192</button>\\n      <button class=\\\"link grey\\\" type=\\\"button\\\" data-step=\\\"3\\\">Skip to decision</button>\\n    </div>`;\\n}\\n\\nfunction details(v) {\\n  const formRows = Object.entries(v.form || {});\\n  return `\\n    ${v.red_flags.length ? `<div class=\\\"sec-wrap\\\"><h2 class=\\\"sec\\\">Things to watch out for</h2>\\n      <ul class=\\\"check-list\\\">${v.red_flags.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}\\n    ${v.criteria.length ? `<div class=\\\"sec-wrap\\\"><h2 class=\\\"sec\\\">How they did on our checks</h2>\\n      <ul class=\\\"check-list\\\">${v.criteria.map(c => {\\n        const [cls, word] = rate(c.score);\\n        return `<li><div class=\\\"mark\\\"><span class=\\\"t\\\">${esc(PLAIN_CHECKS[c.id] || c.name)}</span><span class=\\\"w ${cls}\\\">${word}</span></div><div class=\\\"small\\\">${esc(c.evidence)}</div></li>`;\\n      }).join('')}</ul></div>` : ''}\\n    <div class=\\\"sec-wrap\\\"><h2 class=\\\"sec\\\">What we found online</h2>\\n      ${v.web_findings.length ? `<ul class=\\\"check-list\\\">${v.web_findings.map(f => `<li>${f.url ? `<a href=\\\"${esc(f.url)}\\\" target=\\\"_blank\\\" rel=\\\"noopener\\\">${esc(f.title)}</a>` : `<b>${esc(f.title)}</b>`}<div class=\\\"small\\\">${esc(f.takeaway)}</div></li>`).join('')}</ul>`\\n        : '<p class=\\\"small\\\">Nothing about this supplier came up online.</p>'}</div>\\n    ${formRows.length ? `<div class=\\\"sec-wrap\\\"><details><summary>What they told us on the form</summary>\\n      <dl>${formRows.map(([k, val]) => `<dt>${esc(k)}</dt><dd>${esc(val)}</dd>`).join('')}</dl></details></div>` : ''}\\n    <div class=\\\"actions\\\">\\n      <button class=\\\"btn\\\" type=\\\"button\\\" data-step=\\\"3\\\">Make your decision \\u2192</button>\\n      <button class=\\\"link grey\\\" type=\\\"button\\\" data-step=\\\"1\\\">Back to summary</button>\\n    </div>`;\\n}\\n\\nfunction decide(v) {\\n  if (v.status !== 'pending_review' && !v._reopen) {\\n    const when = v.decided_at ? new Date(v.decided_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) : '';\\n    return `<div class=\\\"box\\\" style=\\\"margin-top:32px\\\"><h2>${STATUS[v.status]}</h2>\\n      <p>By ${esc(v.reviewer || 'someone')}${when ? ' on ' + when : ''}.${v.reviewer_note ? `<br>\\u201c${esc(v.reviewer_note)}\\u201d` : ''}</p></div>\\n      <div class=\\\"actions\\\"><button class=\\\"btn light\\\" type=\\\"button\\\" data-reopen>Change this decision</button></div>`;\\n  }\\n  const ours = ADVICE_TO_CHOICE[v.recommendation];\\n  const choice = state.choice || ours;\\n  const options = [\\n    ['approved', v.blocked ? 'Approve anyway' : 'Approve', v.blocked ? 'Only with written permission from the Head of Procurement.' : 'Add them to our list of suppliers.'],\\n    ['info_requested', 'Ask for more information', 'We will email them asking for what you write below.'],\\n    ['rejected', 'Reject', 'We will email them a polite no.'],\\n  ];\\n  const box = {\\n    approved: v.blocked ? ['Who gave permission, and why?', 'Required. This is kept on our records.'] : ['Anything to add?', 'Optional. Only our team sees this.'],\\n    info_requested: ['What do you need from them?', 'This goes into the email to the supplier.'],\\n    rejected: ['Reason', 'Optional. Only our team sees this, not the supplier.'],\\n  }[choice];\\n  const key = v.vendor_id + choice;\\n  const text = state.drafts[key] ?? (choice === 'info_requested' && v.questions.length ? v.questions.map(q => '\\u2022 ' + q).join('\\\\n') : (v._reopen ? v.reviewer_note || '' : ''));\\n\\n  return `\\n    <h2 class=\\\"sec\\\" style=\\\"margin-top:36px\\\">What would you like to do?</h2>\\n    <div class=\\\"choices\\\" role=\\\"radiogroup\\\">${options.map(([k, t, d]) => `\\n      <button type=\\\"button\\\" class=\\\"choice\\\" role=\\\"radio\\\" aria-checked=\\\"${choice === k}\\\" data-choice=\\\"${k}\\\">\\n        <span class=\\\"dot\\\"></span><span><span class=\\\"t\\\">${t}${k === ours ? '<span class=\\\"ours\\\">Our suggestion</span>' : ''}</span><span class=\\\"d\\\">${d}</span></span>\\n      </button>`).join('')}</div>\\n    ${box ? `<div class=\\\"write\\\"><label for=\\\"note\\\">${box[0]}</label><div class=\\\"hint\\\">${box[1]}</div>\\n      <textarea id=\\\"note\\\" data-key=\\\"${esc(key)}\\\">${esc(text)}</textarea>\\n      <label class=\\\"tick\\\"><input type=\\\"checkbox\\\" id=\\\"notify\\\" checked> Email the supplier</label></div>` : ''}\\n    <div class=\\\"err\\\" id=\\\"err\\\" role=\\\"alert\\\"></div>\\n    <div class=\\\"actions\\\"><button class=\\\"btn\\\" type=\\\"button\\\" data-confirm ${choice ? '' : 'disabled'}>Confirm</button></div>`;\\n}\\n\\nfunction render() { state.view === 'review' ? renderReview() : renderHome(); }\\n\\nfunction go(view, id) {\\n  Object.assign(state, { view, id: id ?? null, step: 1, choice: null });\\n  try { history.replaceState(null, '', id ? '#' + encodeURIComponent(id) : location.pathname + location.search); } catch (e) {}\\n  render();\\n  window.scrollTo({ top: 0 });\\n}\\n\\n/* ======================================================================\\n   Data\\n   ====================================================================== */\\n// n8n serves this page with window.VENDOR_DESK = { base, token, open } filled in.\\n// Opened as a plain file, the page shows practice data instead.\\nconst LIVE = window.VENDOR_DESK || null;\\nconst apiUrl = path => `${LIVE.base}/${path}?t=${encodeURIComponent(LIVE.token)}`;\\nconst SESSION_ENDED = 'Your session has ended. Please reload the page.';\\nconst blank = v => ({ criteria: [], knockouts: [], red_flags: [], web_findings: [], questions: [], form: {}, ...v });\\n\\n// Live rows carry the raw form keys; show them with plain labels.\\nconst FORM_LABELS = { offering: 'What they supply', directors: 'Owners', certifications: 'Certificates', cert_expiry: 'Certificate dates',\\n  capacity: 'Monthly capacity', key_clients: 'Main clients', payment_terms: 'Payment terms', related_party_details: 'Related to anyone at EBM?',\\n  litigation_details: 'Any court cases or bans?', phone: 'Phone' };\\nfunction plainForm(form) {\\n  const out = {};\\n  for (const [k, val] of Object.entries(form || {})) if (val && FORM_LABELS[k]) out[FORM_LABELS[k]] = val;\\n  return out;\\n}\\n\\nasync function load() {\\n  state.demo = !LIVE;\\n  if (state.demo) {\\n    state.vendors = SAMPLE.map(v => blank({ ...v }));\\n  } else {\\n    try {\\n      // A plain GET with the pass in the link: no custom headers, so no CORS preflight.\\n      const res = await fetch(apiUrl('vendor-desk/vendors'));\\n      if (res.status === 401) throw new Error(SESSION_ENDED);\\n      if (!res.ok) throw new Error('The server replied with an error (' + res.status + ').');\\n      state.vendors = ((await res.json()).vendors || []).map(v => blank({ ...v, form: plainForm(v.form) }));\\n    } catch (e) {\\n      app.innerHTML = `<h1>We couldn't load the suppliers</h1><p class=\\\"lead\\\">${esc(e.message)}</p>`;\\n      return;\\n    }\\n  }\\n  // The approver email links to the page with ?vendor=ID; n8n passes it in as LIVE.open.\\n  const wanted = (LIVE && LIVE.open) || decodeURIComponent(location.hash.slice(1));\\n  state.vendors.some(v => v.vendor_id === wanted) ? go('review', wanted) : go('home');\\n}\\n\\nasync function confirmDecision() {\\n  const v = state.vendors.find(x => x.vendor_id === state.id);\\n  const decision = state.choice || ADVICE_TO_CHOICE[v.recommendation];\\n  const note = ($('#note')?.value || '').trim();\\n  const notify = $('#notify')?.checked ?? true;\\n  const err = $('#err');\\n  if (decision === 'info_requested' && note.replace(/[\\u2022\\\\s]/g, '').length === 0) { err.textContent = 'Please write what you need from them.'; return; }\\n  if (decision === 'approved' && v.blocked && note.length < 20) { err.textContent = 'Please write who gave permission and why. We need this on record.'; return; }\\n  const reviewer = store.get('name', '');\\n  if (!reviewer) { openSettings('Please add your name first. It is saved with your decision.'); return; }\\n\\n  const btn = $('[data-confirm]');\\n  btn.disabled = true;\\n  try {\\n    if (!state.demo) {\\n      // Form-encoded body: a \\\"simple\\\" request that a sandboxed page can send without a preflight.\\n      const res = await fetch(apiUrl('vendor-desk/decision'), {\\n        method: 'POST',\\n        body: new URLSearchParams({ payload: JSON.stringify({ vendor_id: v.vendor_id, decision, note, reviewer, notify }) }),\\n      });\\n      if (res.status === 401) throw new Error(SESSION_ENDED);\\n      const out = await res.json().catch(() => ({}));\\n      if (!res.ok || out.ok === false) throw new Error(out.error || 'the server replied with an error');\\n    }\\n    Object.assign(v, { status: decision, reviewer, decided_at: new Date().toISOString(), _reopen: false,\\n      reviewer_note: v.blocked && decision === 'approved' ? '[Exception] ' + note : note });\\n    const next = waiting()[0];\\n    toast(`Done. ${v.company_name}: ${STATUS[decision].toLowerCase()}.${next ? ' Here is the next one.' : ''}`);\\n    next ? go('review', next.vendor_id) : go('home');\\n  } catch (e) {\\n    err.textContent = 'This was not saved: ' + e.message + '. Please try again.';\\n    btn.disabled = false;\\n  }\\n}\\n\\n/* ======================================================================\\n   Events\\n   ====================================================================== */\\nfunction toast(msg) {\\n  const t = $('#toast');\\n  t.textContent = msg;\\n  t.classList.add('show');\\n  clearTimeout(toast.t);\\n  toast.t = setTimeout(() => t.classList.remove('show'), 4000);\\n}\\n\\nfunction openSettings(hint) {\\n  $('#sName').value = store.get('name', '');\\n  $('#settingsHint').textContent = hint || 'Your name is saved with every decision you make.';\\n  $('#settings').showModal();\\n  $('#sName').focus();\\n}\\n\\n// Saving a name keeps the reviewer exactly where they were.\\n$('#settingsForm').addEventListener('submit', () => store.set('name', $('#sName').value.trim()));\\n\\ndocument.addEventListener('click', e => {\\n  const t = e.target.closest('button');\\n  if (!t) return;\\n  const v = state.vendors.find(x => x.vendor_id === state.id);\\n  if (t.matches('[data-home]')) go('home');\\n  else if (t.matches('[data-settings]')) openSettings();\\n  else if (t.matches('[data-toggle-done]')) { state.showDone = !state.showDone; render(); }\\n  else if (t.dataset.open) go('review', t.dataset.open);\\n  else if (t.dataset.step) { state.step = Number(t.dataset.step); render(); window.scrollTo({ top: 0 }); }\\n  else if (t.dataset.choice) { state.choice = t.dataset.choice; render(); }\\n  else if (t.matches('[data-reopen]')) { v._reopen = true; state.choice = v.status; render(); }\\n  else if (t.matches('[data-confirm]')) confirmDecision();\\n});\\ndocument.addEventListener('input', e => {\\n  if (e.target.id === 'note') state.drafts[e.target.dataset.key] = e.target.value;\\n});\\n\\nload();\\n</script>\\n</body>\\n</html>\\n\";\nconst TTL_HOURS = 12;\n\nlet token;\ntry {\n  token = require('crypto').randomBytes(24).toString('hex');\n} catch (e) {\n  token = Array.from({ length: 4 }, () => Math.random().toString(36).slice(2)).join('');\n}\n\n// Passes live in this workflow's static data, which n8n keeps between production runs.\nconst store = $getWorkflowStaticData('global');\nconst now = Date.now();\nstore.sessions = Object.fromEntries(Object.entries(store.sessions || {}).filter(([, exp]) => exp > now));\nstore.sessions[token] = now + TTL_HOURS * 3600 * 1000;\n\nconst query = $('Page Webhook').first().json.query || {};\nconst config = {\n  base: $('Config').first().json.webhook_base.replace(/\\/$/, ''),\n  token,\n  open: String(query.vendor || ''),\n};\nconst inject = `<script>window.VENDOR_DESK = ${JSON.stringify(config)};</script>`;\n\nreturn [{ json: { html: PAGE.replace('<script>', inject + '\\n<script>') } }];\n"
+      }
+    },
+    {
+      "id": "3c0f8272-32a2-5cc0-8ad2-50ab49dbf4c0",
+      "name": "Send Page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "42c5d552-e14d-55d9-8996-87b7faa76bdb",
+      "name": "List Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        240.0
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "vendor-desk/vendors",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "3e96f026-c290-5f96-90b6-dc868805ec88"
+    },
+    {
+      "id": "25e53fcb-c6b9-51d4-838a-c2d5a9dd5fb4",
+      "name": "Check Pass (list)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        240.0
+      ],
+      "parameters": {
+        "jsCode": "// Lets a data call through only with a live session pass from the review page.\n\nconst query = $input.first().json.query || {};\nconst sessions = $getWorkflowStaticData('global').sessions || {};\nconst exp = sessions[String(query.t || '')];\n\nreturn [{ json: { ok: Boolean(exp && exp > Date.now()) } }];\n"
+      }
+    },
+    {
+      "id": "c956cb69-ff52-5b05-aad2-0e89e791d094",
+      "name": "Pass OK? (list)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        240.0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9143f1b0-19f4-58e9-b43b-2bcbf2785f14",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c7820756-f07e-5513-9c3e-c89584cc788b",
+      "name": "Read Vendors",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        720,
+        220.00000000000003
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ebm_vendors"
+        },
+        "matchType": "allConditions",
+        "returnAll": true
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "711c4d5d-e179-575e-ae20-ce16d6a1da93",
+      "name": "Shape for Desk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        220.00000000000003
+      ],
+      "parameters": {
+        "jsCode": "// Turns \"ebm_vendors\" rows into the vendor objects the review page shows.\n// Only vendors who have submitted the form (and so have an assessment) are listed.\n\nfunction parse(s) {\n  try { return s ? JSON.parse(s) : null; } catch (e) { return null; }\n}\nconst list = x => (Array.isArray(x) ? x : []);\n\nconst vendors = $input.all()\n  .map(i => i.json)\n  .filter(r => r.vendor_id && r.assessment)\n  .map(r => {\n    const a = parse(r.assessment) || {};\n    return {\n      ...a,\n      vendor_id: r.vendor_id,\n      status: r.status || 'pending_review',\n      reviewer: r.reviewer || null,\n      reviewer_note: r.reviewer_note || null,\n      decided_at: r.decided_at || null,\n      score: r.score == null || r.score === '' ? null : Number(r.score),\n      tier: r.tier || a.tier,\n      blocked: r.blocked === true || r.blocked === 'true',\n      criteria: list(a.criteria),\n      knockouts: list(a.knockouts),\n      red_flags: list(a.red_flags),\n      web_findings: list(a.web_findings),\n      questions: list(a.questions),\n      form: a.form || {},\n      official_checks: a.official_checks || {},\n      raw_model_output: undefined,\n    };\n  });\n\nreturn [{ json: { vendors, fetched_at: new Date().toISOString() } }];\n"
+      }
+    },
+    {
+      "id": "bdb2f247-4b23-5d73-bfd4-53d419e32ffc",
+      "name": "Send List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        220.00000000000003
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "88fe6f7d-b244-5bda-a28a-016a62a9c049",
+      "name": "No Pass (list)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        340.0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: 'session ended' }) }}",
+        "options": {
+          "responseCode": 401
+        }
+      }
+    },
+    {
+      "id": "5110878f-f542-5e27-ba8f-8e305e396504",
+      "name": "Decision Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        520.0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vendor-desk/decision",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "bbfae759-a9a2-5872-9283-bd1121f726f8"
+    },
+    {
+      "id": "c728e7c4-8a95-52ab-ab3b-91fac5b37ac2",
+      "name": "Check Pass (decision)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        520.0
+      ],
+      "parameters": {
+        "jsCode": "// Lets a data call through only with a live session pass from the review page.\n\nconst query = $input.first().json.query || {};\nconst sessions = $getWorkflowStaticData('global').sessions || {};\nconst exp = sessions[String(query.t || '')];\n\nreturn [{ json: { ok: Boolean(exp && exp > Date.now()) } }];\n"
+      }
+    },
+    {
+      "id": "6f89da02-5fd0-5c93-81bc-da8b1c0199a5",
+      "name": "Pass OK? (decision)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        520.0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b0be0a78-77e0-5399-9ef0-dc21d416ca9f",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
       "id": "dee4a0a3-0314-5a7c-8c36-a0987302a694",
       "name": "Find Vendor",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1,
       "position": [
-        480,
-        300.0
+        720,
+        500.0
       ],
       "parameters": {
         "resource": "row",
@@ -149,7 +320,7 @@
             {
               "keyName": "vendor_id",
               "condition": "eq",
-              "keyValue": "={{ $('Decision Webhook').first().json.body.vendor_id }}"
+              "keyValue": "={{ (() => { try { return JSON.parse($('Decision Webhook').first().json.body.payload).vendor_id } catch (e) { return '' } })() }}"
             }
           ]
         }
@@ -162,11 +333,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        720,
-        300.0
+        960,
+        500.0
       ],
       "parameters": {
-        "jsCode": "// Shared helpers. build.py pastes this file into every Code node that has the\n// include line at its top, so n8n needs no external modules.\n\n// Same algorithm runs in the Apps Script seeder, so a vendor keeps one ID\n// from the first email through the form and the assessment.\nfunction vendorIdFor(email) {\n  const s = String(email || '').trim().toLowerCase();\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return 'EBM-V-' + h.toString(36).toUpperCase().padStart(7, '0').slice(-7);\n}\n\n// Models sometimes wrap JSON in fences or add a sentence before it.\nfunction parseJson(text) {\n  if (!text || typeof text !== 'string') return null;\n  const cleaned = text.replace(/```(?:json)?/gi, '');\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  if (start < 0 || end <= start) return null;\n  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (e) { return null; }\n}\n\nfunction llmText(response) {\n  const choice = response && response.choices && response.choices[0];\n  return (choice && choice.message && choice.message.content) || '';\n}\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n}\n\nfunction clip(s, n) {\n  s = String(s == null ? '' : s).replace(/\\s+\\n/g, '\\n').trim();\n  return s.length > n ? s.slice(0, n) + '…' : s;\n}\n\n// Validates a reviewer's decision against the stored assessment and prepares\n// the table update and the reply to the vendor's email thread.\n\nconst cfg = $('Config').first().json;\nconst body = $('Decision Webhook').first().json.body || {};\nconst row = $input.first().json || {};\nlet saved = {};\ntry { saved = JSON.parse(row.assessment || '{}'); } catch (e) {}\nrow.contact_name = row.contact_name || saved.contact_name || row.sender_name;\nrow.company_name = row.company_name || saved.company_name;\n\nconst DECISIONS = {\n  approved: 'approved',\n  info_requested: 'info_requested',\n  rejected: 'rejected',\n};\n\nfunction fail(error) {\n  return [{ json: { ok: false, error } }];\n}\n\nconst decision = DECISIONS[body.decision];\nconst note = String(body.note || '').trim();\nconst reviewer = String(body.reviewer || '').trim();\n\nif (!decision) return fail('decision must be approved, info_requested or rejected');\nif (!reviewer) return fail('reviewer name is required');\nif (!row.vendor_id || row.vendor_id !== body.vendor_id) return fail(`no assessment found for ${body.vendor_id}`);\n\nconst blocked = row.blocked === true || row.blocked === 'true';\n// Policy section 3: a blocked vendor needs a written exception to be approved.\nif (decision === 'approved' && blocked && note.length < 20) {\n  return fail('this vendor is blocked; approving it needs an exception note of at least 20 characters');\n}\nif (decision === 'info_requested' && !note) return fail('write what the vendor should send');\n\nconst name = esc((row.contact_name || '').split(' ')[0] || 'there');\nconst sign = `<p>Kind regards,<br>${esc(cfg.desk_name)}</p>`;\nconst wrap = inner => `<div style=\"font-family:Arial,sans-serif;font-size:15px;line-height:1.55;color:#212529;max-width:560px\"><p>Dear ${name},</p>${inner}${sign}</div>`;\n\nconst emails = {\n  approved: {\n    subject: `Your vendor registration is approved – ${row.vendor_id}`,\n    html: wrap(`<p>We are glad to let you know that ${esc(row.company_name)} has been approved as a supplier to ${esc(cfg.company_short)}. A buyer from our procurement team will contact you within a week about your vendor code and next steps.</p>`),\n  },\n  info_requested: {\n    subject: `We need a few more details – ${row.vendor_id}`,\n    html: wrap(`<p>Thank you for completing our vendor form. Before we can finish reviewing ${esc(row.company_name)}, we need the following:</p><p style=\"white-space:pre-line;border-left:3px solid #4ec3ec;padding-left:12px\">${esc(note)}</p><p>Please reply to this email with the documents attached and keep your reference ${row.vendor_id} in the subject.</p>`),\n  },\n  rejected: {\n    subject: `Your vendor registration – ${row.vendor_id}`,\n    html: wrap(`<p>Thank you for your interest in supplying ${esc(cfg.company_short)}. After reviewing your submission we are not able to add ${esc(row.company_name)} to our supplier list at this time. You are welcome to apply again in twelve months.</p>`),\n  },\n};\n\nreturn [{\n  json: {\n    ok: true,\n    notify: body.notify !== false && Boolean(row.contact_email),\n    contact_email: row.contact_email,\n    email_subject: emails[decision].subject,\n    email_html: emails[decision].html,\n    vendor_id: row.vendor_id,\n    status: decision,\n    // Replies go into the vendor's original thread when we have it.\n    message_id: row.message_id || '',\n    // Exactly the columns updated in the \"ebm_vendors\" Data Table.\n    update: {\n      vendor_id: row.vendor_id,\n      status: decision,\n      reviewer,\n      reviewer_note: decision === 'approved' && blocked ? '[Exception] ' + note : note,\n      decided_at: new Date().toISOString(),\n    },\n  },\n}];\n"
+        "jsCode": "// Shared helpers. build.py pastes this file into every Code node that has the\n// include line at its top, so n8n needs no external modules.\n\n// Same algorithm runs in the Apps Script seeder, so a vendor keeps one ID\n// from the first email through the form and the assessment.\nfunction vendorIdFor(email) {\n  const s = String(email || '').trim().toLowerCase();\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return 'EBM-V-' + h.toString(36).toUpperCase().padStart(7, '0').slice(-7);\n}\n\n// Models sometimes wrap JSON in fences or add a sentence before it.\nfunction parseJson(text) {\n  if (!text || typeof text !== 'string') return null;\n  const cleaned = text.replace(/```(?:json)?/gi, '');\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  if (start < 0 || end <= start) return null;\n  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (e) { return null; }\n}\n\nfunction llmText(response) {\n  const choice = response && response.choices && response.choices[0];\n  return (choice && choice.message && choice.message.content) || '';\n}\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n}\n\nfunction clip(s, n) {\n  s = String(s == null ? '' : s).replace(/\\s+\\n/g, '\\n').trim();\n  return s.length > n ? s.slice(0, n) + '…' : s;\n}\n\n// Validates a reviewer's decision against the stored assessment and prepares\n// the table update and the reply to the vendor's email thread.\n\nconst cfg = $('Config').first().json;\n// The page posts form-encoded \"payload=<json>\" so a sandboxed page needs no CORS preflight.\nconst raw = $('Decision Webhook').first().json.body || {};\nlet body = raw;\ntry { if (typeof raw.payload === 'string') body = JSON.parse(raw.payload); } catch (e) { body = {}; }\nconst row = $input.first().json || {};\nlet saved = {};\ntry { saved = JSON.parse(row.assessment || '{}'); } catch (e) {}\nrow.contact_name = row.contact_name || saved.contact_name || row.sender_name;\nrow.company_name = row.company_name || saved.company_name;\n\nconst DECISIONS = {\n  approved: 'approved',\n  info_requested: 'info_requested',\n  rejected: 'rejected',\n};\n\nfunction fail(error) {\n  return [{ json: { ok: false, error } }];\n}\n\nconst decision = DECISIONS[body.decision];\nconst note = String(body.note || '').trim();\nconst reviewer = String(body.reviewer || '').trim();\n\nif (!decision) return fail('decision must be approved, info_requested or rejected');\nif (!reviewer) return fail('reviewer name is required');\nif (!row.vendor_id || row.vendor_id !== body.vendor_id) return fail(`no assessment found for ${body.vendor_id}`);\n\nconst blocked = row.blocked === true || row.blocked === 'true';\n// Policy section 3: a blocked vendor needs a written exception to be approved.\nif (decision === 'approved' && blocked && note.length < 20) {\n  return fail('this vendor is blocked; approving it needs an exception note of at least 20 characters');\n}\nif (decision === 'info_requested' && !note) return fail('write what the vendor should send');\n\nconst name = esc((row.contact_name || '').split(' ')[0] || 'there');\nconst sign = `<p>Kind regards,<br>${esc(cfg.desk_name)}</p>`;\nconst wrap = inner => `<div style=\"font-family:Arial,sans-serif;font-size:15px;line-height:1.55;color:#212529;max-width:560px\"><p>Dear ${name},</p>${inner}${sign}</div>`;\n\nconst emails = {\n  approved: {\n    subject: `Your vendor registration is approved – ${row.vendor_id}`,\n    html: wrap(`<p>We are glad to let you know that ${esc(row.company_name)} has been approved as a supplier to ${esc(cfg.company_short)}. A buyer from our procurement team will contact you within a week about your vendor code and next steps.</p>`),\n  },\n  info_requested: {\n    subject: `We need a few more details – ${row.vendor_id}`,\n    html: wrap(`<p>Thank you for completing our vendor form. Before we can finish reviewing ${esc(row.company_name)}, we need the following:</p><p style=\"white-space:pre-line;border-left:3px solid #4ec3ec;padding-left:12px\">${esc(note)}</p><p>Please reply to this email with the documents attached and keep your reference ${row.vendor_id} in the subject.</p>`),\n  },\n  rejected: {\n    subject: `Your vendor registration – ${row.vendor_id}`,\n    html: wrap(`<p>Thank you for your interest in supplying ${esc(cfg.company_short)}. After reviewing your submission we are not able to add ${esc(row.company_name)} to our supplier list at this time. You are welcome to apply again in twelve months.</p>`),\n  },\n};\n\nreturn [{\n  json: {\n    ok: true,\n    notify: body.notify !== false && Boolean(row.contact_email),\n    contact_email: row.contact_email,\n    email_subject: emails[decision].subject,\n    email_html: emails[decision].html,\n    vendor_id: row.vendor_id,\n    status: decision,\n    // Replies go into the vendor's original thread when we have it.\n    message_id: row.message_id || '',\n    // Exactly the columns updated in the \"ebm_vendors\" Data Table.\n    update: {\n      vendor_id: row.vendor_id,\n      status: decision,\n      reviewer,\n      reviewer_note: decision === 'approved' && blocked ? '[Exception] ' + note : note,\n      decided_at: new Date().toISOString(),\n    },\n  },\n}];\n"
       }
     },
     {
@@ -175,8 +346,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        960,
-        300.0
+        1200,
+        500.0
       ],
       "parameters": {
         "conditions": {
@@ -209,8 +380,8 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        1200,
-        240.0
+        1440,
+        459.99999999999994
       ],
       "parameters": {
         "mode": "raw",
@@ -224,8 +395,8 @@
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1,
       "position": [
-        1440,
-        240.0
+        1680,
+        459.99999999999994
       ],
       "parameters": {
         "resource": "row",
@@ -260,8 +431,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1680,
-        240.0
+        1920,
+        459.99999999999994
       ],
       "parameters": {
         "conditions": {
@@ -294,8 +465,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1920,
-        200
+        2160,
+        420.0
       ],
       "parameters": {
         "conditions": {
@@ -328,8 +499,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        2160,
-        160.0
+        2400,
+        380.0
       ],
       "parameters": {
         "resource": "message",
@@ -350,8 +521,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        2160,
-        280.0
+        2400,
+        500.0
       ],
       "parameters": {
         "resource": "message",
@@ -372,8 +543,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        2400,
-        160.0
+        2640,
+        380.0
       ],
       "parameters": {
         "respondWith": "json",
@@ -389,8 +560,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        2400,
-        280.0
+        2640,
+        500.0
       ],
       "parameters": {
         "respondWith": "json",
@@ -406,8 +577,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1920,
-        380.0
+        2160,
+        580.0
       ],
       "parameters": {
         "respondWith": "json",
@@ -423,14 +594,31 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1200,
-        440.00000000000006
+        1440,
+        620.0
       ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify({ ok: false, error: $json.error }) }}",
         "options": {
           "responseCode": 400
+        }
+      }
+    },
+    {
+      "id": "a15ea590-4e4a-5350-9424-7d7e6506e360",
+      "name": "No Pass (decision)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        620.0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: 'session ended' }) }}",
+        "options": {
+          "responseCode": 401
         }
       }
     },
@@ -444,18 +632,80 @@
         -300
       ],
       "parameters": {
-        "content": "## 3 · Review API\nTwo webhooks for the review page, behind one header key. **GET vendor-desk/vendors** lists assessed vendors. **POST vendor-desk/decision** saves approve / ask for more / reject and replies to the vendor in their original email thread.",
-        "width": 620,
+        "content": "## 3 · Review page\n**GET vendor-desk** serves the review page behind a browser login and gives it a 12-hour session pass. **vendor-desk/vendors** lists assessed vendors; **vendor-desk/decision** saves approve / ask for more / reject and replies to the vendor in their original email thread. Both need a live pass.",
+        "width": 640,
         "height": 200
       }
     }
   ],
   "connections": {
+    "Page Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Build Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Page": {
+      "main": [
+        [
+          {
+            "node": "Send Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "List Webhook": {
       "main": [
         [
           {
+            "node": "Check Pass (list)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Pass (list)": {
+      "main": [
+        [
+          {
+            "node": "Pass OK? (list)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pass OK? (list)": {
+      "main": [
+        [
+          {
             "node": "Read Vendors",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Pass (list)",
             "type": "main",
             "index": 0
           }
@@ -488,18 +738,36 @@
       "main": [
         [
           {
-            "node": "Config",
+            "node": "Check Pass (decision)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Config": {
+    "Check Pass (decision)": {
+      "main": [
+        [
+          {
+            "node": "Pass OK? (decision)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pass OK? (decision)": {
       "main": [
         [
           {
             "node": "Find Vendor",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Pass (decision)",
             "type": "main",
             "index": 0
           }

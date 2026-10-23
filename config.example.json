@@ -2,11 +2,12 @@
   "intake_email": "the.gmail.address.n8n.watches@gmail.com",
   "approver_email": "approver@example.com",
   "form_url": "https://YOUR-TEAM.app.n8n.cloud/form/ebm-vendor-form",
-  "review_url": "https://where-you-host-the-review-page/",
+  "review_url": "https://YOUR-TEAM.app.n8n.cloud/webhook/vendor-desk",
   "grc_doc_id": "Google Doc ID of the policy",
   "company_short": "EBM",
   "desk_name": "Vendor Desk, Procurement",
   "triage_model": "google/gemma-4-31b-it:free",
   "assess_model": "google/gemma-4-31b-it:free",
-  "fallback_model": ""
+  "fallback_model": "",
+  "webhook_base": "https://YOUR-TEAM.app.n8n.cloud/webhook"
 }

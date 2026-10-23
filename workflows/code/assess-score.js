@@ -96,7 +96,7 @@ const notifyHtml = `
   ${record.score != null ? `<p style="font-size:28px;margin:6px 0">${record.score}<span style="font-size:15px"> out of 100</span></p>` : ''}
   ${record.blocked ? `<p style="color:#c42e1c"><b>Not allowed:</b> ${record.knockouts.map(k => esc(k.reason)).join(' ')}</p>` : ''}
   <p>${esc(record.summary)}</p>
-  <p><a href="${esc(cfg.review_url)}#${encodeURIComponent(record.vendor_id)}" style="color:#343579">Review this supplier</a></p>
+  <p><a href="${esc(cfg.review_url)}?vendor=${encodeURIComponent(record.vendor_id)}" style="color:#343579">Review this supplier</a></p>
 </div>`;
 
 // The Data Table keeps a few columns for sorting and the full assessment as JSON.
