@@ -1,5 +1,5 @@
 {
-  "name": "EBM Vendor Desk · 3 Review API",
+  "name": "EBM Vendors · 3 Review API",
   "nodes": [
     {
       "id": "42c5d552-e14d-55d9-8996-87b7faa76bdb",
@@ -20,30 +20,27 @@
         }
       },
       "webhookId": "3e96f026-c290-5f96-90b6-dc868805ec88",
-      "notes": "Credential: Header Auth named 'Vendor Desk key' — Name: x-desk-key, Value: a long random string"
+      "notes": "Credential: Header Auth 'Vendor Desk key' (Name: x-desk-key)"
     },
     {
-      "id": "2867ae2a-8176-59ed-8dc6-0c78d4afe38c",
-      "name": "Read Assessments",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.5,
+      "id": "c7820756-f07e-5513-9c3e-c89584cc788b",
+      "name": "Read Vendors",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
       "position": [
         240,
         0
       ],
       "parameters": {
-        "operation": "read",
-        "documentId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "paste from the Apps Script log"
-        },
-        "sheetName": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
           "__rl": true,
           "mode": "name",
-          "value": "Assessments"
+          "value": "ebm_vendors"
         },
-        "options": {}
+        "matchType": "allConditions",
+        "returnAll": true
       },
       "alwaysOutputData": true
     },
@@ -57,7 +54,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "// Turns Assessment rows back into objects for the Vendor Desk page.\n\nconst JSON_COLUMNS = ['criteria_json', 'knockouts_json', 'red_flags_json', 'web_findings_json', 'questions_json', 'form_json'];\n\nfunction parse(s, fallback) {\n  try { return s ? JSON.parse(s) : fallback; } catch (e) { return fallback; }\n}\n\nconst vendors = $input.all()\n  .map(i => i.json)\n  .filter(r => r.vendor_id)\n  .map(r => {\n    const v = { ...r };\n    for (const col of JSON_COLUMNS) {\n      v[col.replace(/_json$/, '')] = parse(r[col], col === 'form_json' ? {} : []);\n      delete v[col];\n    }\n    delete v.raw_model_output;\n    delete v.row_number;\n    v.score = r.score === '' ? null : Number(r.score);\n    v.blocked = r.blocked === true || String(r.blocked).toUpperCase() === 'TRUE';\n    return v;\n  });\n\nreturn [{ json: { vendors, fetched_at: new Date().toISOString() } }];\n"
+        "jsCode": "// Turns \"ebm_vendors\" rows into the vendor objects the review page shows.\n// Only vendors who have submitted the form (and so have an assessment) are listed.\n\nfunction parse(s) {\n  try { return s ? JSON.parse(s) : null; } catch (e) { return null; }\n}\nconst list = x => (Array.isArray(x) ? x : []);\n\nconst vendors = $input.all()\n  .map(i => i.json)\n  .filter(r => r.vendor_id && r.assessment)\n  .map(r => {\n    const a = parse(r.assessment) || {};\n    return {\n      ...a,\n      vendor_id: r.vendor_id,\n      status: r.status || 'pending_review',\n      reviewer: r.reviewer || null,\n      reviewer_note: r.reviewer_note || null,\n      decided_at: r.decided_at || null,\n      score: r.score == null || r.score === '' ? null : Number(r.score),\n      tier: r.tier || a.tier,\n      blocked: r.blocked === true || r.blocked === 'true',\n      criteria: list(a.criteria),\n      knockouts: list(a.knockouts),\n      red_flags: list(a.red_flags),\n      web_findings: list(a.web_findings),\n      questions: list(a.questions),\n      form: a.form || {},\n      official_checks: a.official_checks || {},\n      raw_model_output: undefined,\n    };\n  });\n\nreturn [{ json: { vendors, fetched_at: new Date().toISOString() } }];\n"
       }
     },
     {
@@ -96,7 +93,7 @@
         }
       },
       "webhookId": "bbfae759-a9a2-5872-9283-bd1121f726f8",
-      "notes": "Credential: Header Auth named 'Vendor Desk key' — Name: x-desk-key, Value: a long random string"
+      "notes": "Credential: Header Auth 'Vendor Desk key' (Name: x-desk-key)"
     },
     {
       "id": "34bf9189-199f-51c3-aafa-51fce5566340",
@@ -126,38 +123,36 @@
         },
         "options": {}
       },
-      "executeOnce": true
+      "executeOnce": true,
+      "notes": "All settings for this workflow live here."
     },
     {
-      "id": "02c42259-b2f3-53c2-960b-c3e34315767a",
-      "name": "Find Assessment",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.5,
+      "id": "dee4a0a3-0314-5a7c-8c36-a0987302a694",
+      "name": "Find Vendor",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
       "position": [
         480,
         300.0
       ],
       "parameters": {
-        "operation": "read",
-        "documentId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "paste from the Apps Script log"
-        },
-        "sheetName": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
           "__rl": true,
           "mode": "name",
-          "value": "Assessments"
+          "value": "ebm_vendors"
         },
-        "filtersUI": {
-          "values": [
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
             {
-              "lookupColumn": "vendor_id",
-              "lookupValue": "={{ $('Decision Webhook').first().json.body.vendor_id }}"
+              "keyName": "vendor_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Decision Webhook').first().json.body.vendor_id }}"
             }
           ]
-        },
-        "options": {}
+        }
       },
       "alwaysOutputData": true
     },
@@ -171,7 +166,7 @@
         300.0
       ],
       "parameters": {
-        "jsCode": "// Shared helpers. build.py pastes this file into every Code node that has the\n// include line at its top, so n8n needs no external modules.\n\n// Same algorithm runs in the Apps Script seeder, so a vendor keeps one ID\n// from the first email through the form and the assessment.\nfunction vendorIdFor(email) {\n  const s = String(email || '').trim().toLowerCase();\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return 'EBM-V-' + h.toString(36).toUpperCase().padStart(7, '0').slice(-7);\n}\n\n// Models sometimes wrap JSON in fences or add a sentence before it.\nfunction parseJson(text) {\n  if (!text || typeof text !== 'string') return null;\n  const cleaned = text.replace(/```(?:json)?/gi, '');\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  if (start < 0 || end <= start) return null;\n  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (e) { return null; }\n}\n\nfunction llmText(response) {\n  const choice = response && response.choices && response.choices[0];\n  return (choice && choice.message && choice.message.content) || '';\n}\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n}\n\nfunction clip(s, n) {\n  s = String(s == null ? '' : s).replace(/\\s+\\n/g, '\\n').trim();\n  return s.length > n ? s.slice(0, n) + '…' : s;\n}\n\n// Validates a reviewer's decision against the stored assessment and prepares\n// the sheet update and the vendor email.\n\nconst cfg = $('Config').first().json;\nconst body = $('Decision Webhook').first().json.body || {};\nconst row = $input.first().json || {};\n\nconst DECISIONS = {\n  approved: 'approved',\n  info_requested: 'info_requested',\n  rejected: 'rejected',\n};\n\nfunction fail(error) {\n  return [{ json: { ok: false, error } }];\n}\n\nconst decision = DECISIONS[body.decision];\nconst note = String(body.note || '').trim();\nconst reviewer = String(body.reviewer || '').trim();\n\nif (!decision) return fail('decision must be approved, info_requested or rejected');\nif (!reviewer) return fail('reviewer name is required');\nif (!row.vendor_id || row.vendor_id !== body.vendor_id) return fail(`no assessment found for ${body.vendor_id}`);\n\nconst blocked = row.blocked === true || String(row.blocked).toUpperCase() === 'TRUE';\n// Policy section 3: a blocked vendor needs a written exception to be approved.\nif (decision === 'approved' && blocked && note.length < 20) {\n  return fail('this vendor is blocked; approving it needs an exception note of at least 20 characters');\n}\nif (decision === 'info_requested' && !note) return fail('write what the vendor should send');\n\nconst name = esc((row.contact_name || '').split(' ')[0] || 'there');\nconst sign = `<p>Kind regards,<br>${esc(cfg.desk_name)}</p>`;\nconst wrap = inner => `<div style=\"font-family:Arial,sans-serif;font-size:15px;line-height:1.55;color:#212529;max-width:560px\"><p>Dear ${name},</p>${inner}${sign}</div>`;\n\nconst emails = {\n  approved: {\n    subject: `Your vendor registration is approved – ${row.vendor_id}`,\n    html: wrap(`<p>We are glad to let you know that ${esc(row.company_name)} has been approved as a supplier to ${esc(cfg.company_short)}. A buyer from our procurement team will contact you within a week about your vendor code and next steps.</p>`),\n  },\n  info_requested: {\n    subject: `We need a few more details – ${row.vendor_id}`,\n    html: wrap(`<p>Thank you for completing our vendor form. Before we can finish reviewing ${esc(row.company_name)}, we need the following:</p><p style=\"white-space:pre-line;border-left:3px solid #4ec3ec;padding-left:12px\">${esc(note)}</p><p>Please reply to this email with the documents attached and keep your reference ${row.vendor_id} in the subject.</p>`),\n  },\n  rejected: {\n    subject: `Your vendor registration – ${row.vendor_id}`,\n    html: wrap(`<p>Thank you for your interest in supplying ${esc(cfg.company_short)}. After reviewing your submission we are not able to add ${esc(row.company_name)} to our supplier list at this time. You are welcome to apply again in twelve months.</p>`),\n  },\n};\n\nreturn [{\n  json: {\n    ok: true,\n    notify: body.notify !== false && Boolean(row.contact_email),\n    contact_email: row.contact_email,\n    email_subject: emails[decision].subject,\n    email_html: emails[decision].html,\n    // Written to the sheet; ok, notify and email_* have no column and are ignored.\n    vendor_id: row.vendor_id,\n    status: decision,\n    reviewer,\n    reviewer_note: decision === 'approved' && blocked ? '[Exception] ' + note : note,\n    decided_at: new Date().toISOString(),\n  },\n}];\n"
+        "jsCode": "// Shared helpers. build.py pastes this file into every Code node that has the\n// include line at its top, so n8n needs no external modules.\n\n// Same algorithm runs in the Apps Script seeder, so a vendor keeps one ID\n// from the first email through the form and the assessment.\nfunction vendorIdFor(email) {\n  const s = String(email || '').trim().toLowerCase();\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return 'EBM-V-' + h.toString(36).toUpperCase().padStart(7, '0').slice(-7);\n}\n\n// Models sometimes wrap JSON in fences or add a sentence before it.\nfunction parseJson(text) {\n  if (!text || typeof text !== 'string') return null;\n  const cleaned = text.replace(/```(?:json)?/gi, '');\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  if (start < 0 || end <= start) return null;\n  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (e) { return null; }\n}\n\nfunction llmText(response) {\n  const choice = response && response.choices && response.choices[0];\n  return (choice && choice.message && choice.message.content) || '';\n}\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n}\n\nfunction clip(s, n) {\n  s = String(s == null ? '' : s).replace(/\\s+\\n/g, '\\n').trim();\n  return s.length > n ? s.slice(0, n) + '…' : s;\n}\n\n// Validates a reviewer's decision against the stored assessment and prepares\n// the table update and the reply to the vendor's email thread.\n\nconst cfg = $('Config').first().json;\nconst body = $('Decision Webhook').first().json.body || {};\nconst row = $input.first().json || {};\nlet saved = {};\ntry { saved = JSON.parse(row.assessment || '{}'); } catch (e) {}\nrow.contact_name = row.contact_name || saved.contact_name || row.sender_name;\nrow.company_name = row.company_name || saved.company_name;\n\nconst DECISIONS = {\n  approved: 'approved',\n  info_requested: 'info_requested',\n  rejected: 'rejected',\n};\n\nfunction fail(error) {\n  return [{ json: { ok: false, error } }];\n}\n\nconst decision = DECISIONS[body.decision];\nconst note = String(body.note || '').trim();\nconst reviewer = String(body.reviewer || '').trim();\n\nif (!decision) return fail('decision must be approved, info_requested or rejected');\nif (!reviewer) return fail('reviewer name is required');\nif (!row.vendor_id || row.vendor_id !== body.vendor_id) return fail(`no assessment found for ${body.vendor_id}`);\n\nconst blocked = row.blocked === true || row.blocked === 'true';\n// Policy section 3: a blocked vendor needs a written exception to be approved.\nif (decision === 'approved' && blocked && note.length < 20) {\n  return fail('this vendor is blocked; approving it needs an exception note of at least 20 characters');\n}\nif (decision === 'info_requested' && !note) return fail('write what the vendor should send');\n\nconst name = esc((row.contact_name || '').split(' ')[0] || 'there');\nconst sign = `<p>Kind regards,<br>${esc(cfg.desk_name)}</p>`;\nconst wrap = inner => `<div style=\"font-family:Arial,sans-serif;font-size:15px;line-height:1.55;color:#212529;max-width:560px\"><p>Dear ${name},</p>${inner}${sign}</div>`;\n\nconst emails = {\n  approved: {\n    subject: `Your vendor registration is approved – ${row.vendor_id}`,\n    html: wrap(`<p>We are glad to let you know that ${esc(row.company_name)} has been approved as a supplier to ${esc(cfg.company_short)}. A buyer from our procurement team will contact you within a week about your vendor code and next steps.</p>`),\n  },\n  info_requested: {\n    subject: `We need a few more details – ${row.vendor_id}`,\n    html: wrap(`<p>Thank you for completing our vendor form. Before we can finish reviewing ${esc(row.company_name)}, we need the following:</p><p style=\"white-space:pre-line;border-left:3px solid #4ec3ec;padding-left:12px\">${esc(note)}</p><p>Please reply to this email with the documents attached and keep your reference ${row.vendor_id} in the subject.</p>`),\n  },\n  rejected: {\n    subject: `Your vendor registration – ${row.vendor_id}`,\n    html: wrap(`<p>Thank you for your interest in supplying ${esc(cfg.company_short)}. After reviewing your submission we are not able to add ${esc(row.company_name)} to our supplier list at this time. You are welcome to apply again in twelve months.</p>`),\n  },\n};\n\nreturn [{\n  json: {\n    ok: true,\n    notify: body.notify !== false && Boolean(row.contact_email),\n    contact_email: row.contact_email,\n    email_subject: emails[decision].subject,\n    email_html: emails[decision].html,\n    vendor_id: row.vendor_id,\n    status: decision,\n    // Replies go into the vendor's original thread when we have it.\n    message_id: row.message_id || '',\n    // Exactly the columns updated in the \"ebm_vendors\" Data Table.\n    update: {\n      vendor_id: row.vendor_id,\n      status: decision,\n      reviewer,\n      reviewer_note: decision === 'approved' && blocked ? '[Exception] ' + note : note,\n      decided_at: new Date().toISOString(),\n    },\n  },\n}];\n"
       }
     },
     {
@@ -209,37 +204,54 @@
       }
     },
     {
-      "id": "ea388d3f-8d07-53fa-a14a-85560cf20623",
-      "name": "Save Decision",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.5,
+      "id": "a9a9a8ba-9ee2-5ad5-8646-e24db485b283",
+      "name": "Decision Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
       "position": [
         1200,
-        200
+        240.0
       ],
       "parameters": {
-        "operation": "appendOrUpdate",
-        "documentId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "paste from the Apps Script log"
-        },
-        "sheetName": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify($json.update) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "ea388d3f-8d07-53fa-a14a-85560cf20623",
+      "name": "Save Decision",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        240.0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
           "__rl": true,
           "mode": "name",
-          "value": "Assessments"
+          "value": "ebm_vendors"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "vendor_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.vendor_id }}"
+            }
+          ]
         },
         "columns": {
           "mappingMode": "autoMapInputData",
           "value": {},
-          "matchingColumns": [
-            "vendor_id"
-          ],
+          "matchingColumns": [],
           "schema": []
         },
-        "options": {
-          "handlingExtraData": "ignoreIt"
-        }
+        "options": {}
       }
     },
     {
@@ -248,8 +260,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1440,
-        200
+        1680,
+        240.0
       ],
       "parameters": {
         "conditions": {
@@ -262,7 +274,7 @@
           "conditions": [
             {
               "id": "4749f5e1-f4cc-590e-9fe3-16cbefa116d4",
-              "leftValue": "={{ $('Check Decision').item.json.notify }}",
+              "leftValue": "={{ $('Check Decision').first().json.notify }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -277,21 +289,77 @@
       }
     },
     {
+      "id": "bed8cbc7-2a3b-58c8-acec-06dca825e884",
+      "name": "Have their thread?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ccc5bb01-725c-5c49-b72f-c3eefa4f47d8",
+              "leftValue": "={{ !!$('Check Decision').first().json.message_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "16b5bb14-1e15-57c2-9f13-3e43c024920d",
+      "name": "Reply in Thread",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2160,
+        160.0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "reply",
+        "messageId": "={{ $('Check Decision').first().json.message_id }}",
+        "emailType": "html",
+        "message": "={{ $('Check Decision').first().json.email_html }}",
+        "options": {
+          "appendAttribution": false,
+          "replyToSenderOnly": true,
+          "senderName": "={{ $('Config').first().json.desk_name }}"
+        }
+      }
+    },
+    {
       "id": "a6efa2e5-e898-5be4-b407-e80d9c1fc92d",
       "name": "Email Vendor",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        1680,
-        140.0
+        2160,
+        280.0
       ],
       "parameters": {
         "resource": "message",
         "operation": "send",
-        "sendTo": "={{ $('Check Decision').item.json.contact_email }}",
-        "subject": "={{ $('Check Decision').item.json.email_subject }}",
+        "sendTo": "={{ $('Check Decision').first().json.contact_email }}",
+        "subject": "={{ $('Check Decision').first().json.email_subject }}",
         "emailType": "html",
-        "message": "={{ $('Check Decision').item.json.email_html }}",
+        "message": "={{ $('Check Decision').first().json.email_html }}",
         "options": {
           "appendAttribution": false,
           "senderName": "={{ $('Config').first().json.desk_name }}"
@@ -304,12 +372,29 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1920,
-        140.0
+        2400,
+        160.0
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ ok: true, vendor_id: $('Check Decision').item.json.vendor_id, status: $('Check Decision').item.json.status, emailed: true }) }}",
+        "responseBody": "={{ JSON.stringify({ ok: true, vendor_id: $('Check Decision').first().json.vendor_id, status: $('Check Decision').first().json.status, emailed: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "e696da57-b24a-5794-9035-bbda581b67cd",
+      "name": "Saved (sent)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2400,
+        280.0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, vendor_id: $('Check Decision').first().json.vendor_id, status: $('Check Decision').first().json.status, emailed: true }) }}",
         "options": {
           "responseCode": 200
         }
@@ -321,12 +406,12 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1680,
-        300.0
+        1920,
+        380.0
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ ok: true, vendor_id: $('Check Decision').item.json.vendor_id, status: $('Check Decision').item.json.status, emailed: false }) }}",
+        "responseBody": "={{ JSON.stringify({ ok: true, vendor_id: $('Check Decision').first().json.vendor_id, status: $('Check Decision').first().json.status, emailed: false }) }}",
         "options": {
           "responseCode": 200
         }
@@ -359,7 +444,7 @@
         -300
       ],
       "parameters": {
-        "content": "## 3 · Vendor Desk API\nTwo webhooks behind one header key. **GET vendor-desk/vendors** returns every assessment for the Desk page. **POST vendor-desk/decision** records approve, ask-for-info or reject, writes it to **Assessments**, and emails the vendor unless the reviewer turned that off.",
+        "content": "## 3 · Review API\nTwo webhooks for the review page, behind one header key. **GET vendor-desk/vendors** lists assessed vendors. **POST vendor-desk/decision** saves approve / ask for more / reject and replies to the vendor in their original email thread.",
         "width": 620,
         "height": 200
       }
@@ -370,14 +455,14 @@
       "main": [
         [
           {
-            "node": "Read Assessments",
+            "node": "Read Vendors",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Read Assessments": {
+    "Read Vendors": {
       "main": [
         [
           {
@@ -414,14 +499,14 @@
       "main": [
         [
           {
-            "node": "Find Assessment",
+            "node": "Find Vendor",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Find Assessment": {
+    "Find Vendor": {
       "main": [
         [
           {
@@ -447,7 +532,7 @@
       "main": [
         [
           {
-            "node": "Save Decision",
+            "node": "Decision Row",
             "type": "main",
             "index": 0
           }
@@ -455,6 +540,17 @@
         [
           {
             "node": "Rejected Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Row": {
+      "main": [
+        [
+          {
+            "node": "Save Decision",
             "type": "main",
             "index": 0
           }
@@ -476,7 +572,7 @@
       "main": [
         [
           {
-            "node": "Email Vendor",
+            "node": "Have their thread?",
             "type": "main",
             "index": 0
           }
@@ -490,7 +586,25 @@
         ]
       ]
     },
-    "Email Vendor": {
+    "Have their thread?": {
+      "main": [
+        [
+          {
+            "node": "Reply in Thread",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email Vendor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply in Thread": {
       "main": [
         [
           {
@@ -500,12 +614,21 @@
           }
         ]
       ]
+    },
+    "Email Vendor": {
+      "main": [
+        [
+          {
+            "node": "Saved (sent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "pinData": {},
   "settings": {
-    "executionOrder": "v1",
-    "saveManualExecutions": true
-  },
-  "active": false
+    "executionOrder": "v1"
+  }
 }

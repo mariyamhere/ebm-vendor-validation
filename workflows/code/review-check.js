@@ -1,10 +1,14 @@
 // @include _helpers.js
 // Validates a reviewer's decision against the stored assessment and prepares
-// the sheet update and the vendor email.
+// the table update and the reply to the vendor's email thread.
 
 const cfg = $('Config').first().json;
 const body = $('Decision Webhook').first().json.body || {};
 const row = $input.first().json || {};
+let saved = {};
+try { saved = JSON.parse(row.assessment || '{}'); } catch (e) {}
+row.contact_name = row.contact_name || saved.contact_name || row.sender_name;
+row.company_name = row.company_name || saved.company_name;
 
 const DECISIONS = {
   approved: 'approved',
@@ -24,7 +28,7 @@ if (!decision) return fail('decision must be approved, info_requested or rejecte
 if (!reviewer) return fail('reviewer name is required');
 if (!row.vendor_id || row.vendor_id !== body.vendor_id) return fail(`no assessment found for ${body.vendor_id}`);
 
-const blocked = row.blocked === true || String(row.blocked).toUpperCase() === 'TRUE';
+const blocked = row.blocked === true || row.blocked === 'true';
 // Policy section 3: a blocked vendor needs a written exception to be approved.
 if (decision === 'approved' && blocked && note.length < 20) {
   return fail('this vendor is blocked; approving it needs an exception note of at least 20 characters');
@@ -57,11 +61,17 @@ return [{
     contact_email: row.contact_email,
     email_subject: emails[decision].subject,
     email_html: emails[decision].html,
-    // Written to the sheet; ok, notify and email_* have no column and are ignored.
     vendor_id: row.vendor_id,
     status: decision,
-    reviewer,
-    reviewer_note: decision === 'approved' && blocked ? '[Exception] ' + note : note,
-    decided_at: new Date().toISOString(),
+    // Replies go into the vendor's original thread when we have it.
+    message_id: row.message_id || '',
+    // Exactly the columns updated in the "ebm_vendors" Data Table.
+    update: {
+      vendor_id: row.vendor_id,
+      status: decision,
+      reviewer,
+      reviewer_note: decision === 'approved' && blocked ? '[Exception] ' + note : note,
+      decided_at: new Date().toISOString(),
+    },
   },
 }];

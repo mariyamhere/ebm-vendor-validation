@@ -1,5 +1,5 @@
 {
-  "name": "EBM Vendor Desk · 1 Intake",
+  "name": "EBM Vendors · 1 Intake",
   "nodes": [
     {
       "id": "9bd8b5ba-b43a-5a4a-8a38-3f95d81b1afe",
@@ -20,7 +20,7 @@
         },
         "simple": false,
         "filters": {
-          "q": "in:inbox newer_than:2d -category:promotions -category:social",
+          "q": "in:inbox -from:me -category:promotions -category:social",
           "readStatus": "both"
         },
         "options": {}
@@ -41,13 +41,13 @@
             {
               "id": "355948e4-6e11-5384-bae4-5ec076050a3e",
               "name": "intake_email",
-              "value": "the.gmail.address.n8n.watches@gmail.com",
+              "value": "mariyam.wake@gmail.com",
               "type": "string"
             },
             {
-              "id": "c46d3868-cd4b-5257-ac2d-4aaf9d95aab8",
-              "name": "form_prefill_url",
-              "value": "paste from the Apps Script log",
+              "id": "301f4c30-f895-5cea-a6f7-af1d7f8ba5ea",
+              "name": "form_url",
+              "value": "https://jbsalpha.app.n8n.cloud/form/ebm-vendor-form",
               "type": "string"
             },
             {
@@ -78,7 +78,8 @@
         },
         "options": {}
       },
-      "executeOnce": true
+      "executeOnce": true,
+      "notes": "All settings for this workflow live here."
     },
     {
       "id": "f9841f21-2f9c-5749-9b42-b1b4a0bd8dc1",
@@ -112,7 +113,7 @@
           "parameters": [
             {
               "name": "X-Title",
-              "value": "Vendor Desk"
+              "value": "EBM Vendor Validation"
             }
           ]
         },
@@ -130,10 +131,10 @@
         }
       },
       "retryOnFail": true,
-      "maxTries": 3,
+      "maxTries": 5,
       "waitBetweenTries": 5000,
       "onError": "continueRegularOutput",
-      "notes": "Credential: Header Auth named 'OpenRouter' — Name: Authorization, Value: Bearer sk-or-…"
+      "notes": "Credential: Header Auth 'OpenRouter' (Authorization: Bearer sk-or-…)"
     },
     {
       "id": "0f8b5325-5be1-5c6c-8fc0-a672c99f7994",
@@ -145,7 +146,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "// Shared helpers. build.py pastes this file into every Code node that has the\n// include line at its top, so n8n needs no external modules.\n\n// Same algorithm runs in the Apps Script seeder, so a vendor keeps one ID\n// from the first email through the form and the assessment.\nfunction vendorIdFor(email) {\n  const s = String(email || '').trim().toLowerCase();\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return 'EBM-V-' + h.toString(36).toUpperCase().padStart(7, '0').slice(-7);\n}\n\n// Models sometimes wrap JSON in fences or add a sentence before it.\nfunction parseJson(text) {\n  if (!text || typeof text !== 'string') return null;\n  const cleaned = text.replace(/```(?:json)?/gi, '');\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  if (start < 0 || end <= start) return null;\n  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (e) { return null; }\n}\n\nfunction llmText(response) {\n  const choice = response && response.choices && response.choices[0];\n  return (choice && choice.message && choice.message.content) || '';\n}\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n}\n\nfunction clip(s, n) {\n  s = String(s == null ? '' : s).replace(/\\s+\\n/g, '\\n').trim();\n  return s.length > n ? s.slice(0, n) + '…' : s;\n}\n\n// Reads the model's verdict, falls back to keywords if the free model failed,\n// and prepares the Intake row and the form-link email.\n\nconst cfg = $('Config').first().json;\nconst emails = $('Prepare Email').all();\nconst KEYWORDS = /\\b(supplier|vendor|supply|suppliers|registration|onboard|quotation|carrier|distribut|manufactur)/i;\n\nreturn $input.all().map((item, i) => {\n  const e = emails[i].json;\n  const verdict = parseJson(llmText(item.json));\n  const usedFallback = !verdict;\n  const isVendor = verdict\n    ? verdict.is_vendor_inquiry === true && Number(verdict.confidence || 0) >= 0.5\n    : KEYWORDS.test(e.subject + ' ' + e.body);\n  const t = verdict || {};\n\n  const vendorId = vendorIdFor(e.vendor_email);\n  const company = t.company_name || '';\n  const formLink = String(cfg.form_prefill_url)\n    .replace('{{vendor_id}}', encodeURIComponent(vendorId))\n    .replace('{{company_name}}', encodeURIComponent(company))\n    .replace('{{contact_email}}', encodeURIComponent(e.vendor_email));\n\n  const firstName = (t.contact_name || e.sender_name || '').split(' ')[0];\n  const replyHtml = `\n<div style=\"font-family:Arial,sans-serif;font-size:15px;line-height:1.55;color:#212529;max-width:560px\">\n  <p>${firstName ? 'Dear ' + esc(firstName) : 'Hello'},</p>\n  <p>Thank you for writing to us about supplying ${esc(cfg.company_short)}. To start your registration, please fill in our vendor information form. It takes about ten minutes; keep your NTN, STRN and certificate details nearby.</p>\n  <p style=\"margin:22px 0\"><a href=\"${esc(formLink)}\" style=\"background:#343579;color:#ffffff;padding:11px 20px;border-radius:22px;text-decoration:none;font-family:Arial,sans-serif;font-size:14px\">Open the vendor form</a></p>\n  <p>Your reference is <b>${vendorId}</b>. Please quote it if you write to us again. Our team reviews every submission and replies within five working days.</p>\n  <p>Kind regards,<br>${esc(cfg.desk_name)}</p>\n</div>`;\n\n  return {\n    json: {\n      is_vendor: isVendor,\n      vendor_id: vendorId,\n      contact_email: e.vendor_email,\n      sender_name: e.sender_name,\n      company_name: company,\n      website: t.website || '',\n      category_guess: t.category_guess || 'Unknown',\n      subject: e.subject,\n      email_summary: t.summary || '',\n      email_body: e.body,\n      received_at: e.received_at,\n      form_sent_at: new Date().toISOString(),\n      status: 'form_sent',\n      triage_note: usedFallback ? 'model unavailable, keyword match used' : `confidence ${t.confidence}`,\n      // Not written to the sheet (extra fields are ignored there).\n      reply_subject: /^re:/i.test(e.subject) ? e.subject : 'Re: ' + e.subject,\n      reply_html: replyHtml,\n      message_id: e.message_id,\n    },\n  };\n});\n"
+        "jsCode": "// Shared helpers. build.py pastes this file into every Code node that has the\n// include line at its top, so n8n needs no external modules.\n\n// Same algorithm runs in the Apps Script seeder, so a vendor keeps one ID\n// from the first email through the form and the assessment.\nfunction vendorIdFor(email) {\n  const s = String(email || '').trim().toLowerCase();\n  let h = 5381;\n  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;\n  return 'EBM-V-' + h.toString(36).toUpperCase().padStart(7, '0').slice(-7);\n}\n\n// Models sometimes wrap JSON in fences or add a sentence before it.\nfunction parseJson(text) {\n  if (!text || typeof text !== 'string') return null;\n  const cleaned = text.replace(/```(?:json)?/gi, '');\n  const start = cleaned.indexOf('{');\n  const end = cleaned.lastIndexOf('}');\n  if (start < 0 || end <= start) return null;\n  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (e) { return null; }\n}\n\nfunction llmText(response) {\n  const choice = response && response.choices && response.choices[0];\n  return (choice && choice.message && choice.message.content) || '';\n}\n\nfunction esc(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n}\n\nfunction clip(s, n) {\n  s = String(s == null ? '' : s).replace(/\\s+\\n/g, '\\n').trim();\n  return s.length > n ? s.slice(0, n) + '…' : s;\n}\n\n// Reads the model's verdict, falls back to keywords if the free model failed,\n// and prepares the vendor record and the form-link email.\n\nconst cfg = $('Config').first().json;\nconst emails = $('Prepare Email').all();\nconst KEYWORDS = /\\b(supplier|vendor|supply|suppliers|registration|onboard|quotation|carrier|distribut|manufactur)/i;\n\nreturn $input.all().map((item, i) => {\n  const e = emails[i].json;\n  const verdict = parseJson(llmText(item.json));\n  const usedFallback = !verdict;\n  const isVendor = verdict\n    ? verdict.is_vendor_inquiry === true && Number(verdict.confidence || 0) >= 0.5\n    : KEYWORDS.test(e.subject + ' ' + e.body);\n  const t = verdict || {};\n\n  // One vendor per email thread, so several test vendors can share one sender.\n  const vendorId = 'EBM-' + String(e.thread_id || e.message_id).slice(-6).toUpperCase();\n  // The n8n form fills its hidden \"vendor_id\" field from the query string.\n  const formLink = `${cfg.form_url}?vendor_id=${encodeURIComponent(vendorId)}`;\n\n  const firstName = (t.contact_name || e.sender_name || '').split(' ')[0];\n  const replyHtml = `\n<div style=\"font-family:Arial,sans-serif;font-size:15px;line-height:1.55;color:#212529;max-width:560px\">\n  <p>${firstName ? 'Dear ' + esc(firstName) : 'Hello'},</p>\n  <p>Thank you for writing to us about supplying ${esc(cfg.company_short)}. To start your registration, please fill in our vendor information form. It takes about ten minutes; keep your NTN, STRN, SECP registration number and certificate details nearby.</p>\n  <p style=\"margin:22px 0\"><a href=\"${esc(formLink)}\" style=\"background:#343579;color:#ffffff;padding:11px 20px;border-radius:22px;text-decoration:none;font-family:Arial,sans-serif;font-size:14px\">Open the vendor form</a></p>\n  <p>Your reference is <b>${vendorId}</b>. Please quote it if you write to us again. Our team reviews every submission and replies within five working days.</p>\n  <p>Kind regards,<br>${esc(cfg.desk_name)}</p>\n</div>`;\n\n  return {\n    json: {\n      is_vendor: isVendor,\n      // Exactly the columns of the \"ebm_vendors\" Data Table.\n      row: {\n        vendor_id: vendorId,\n        contact_email: e.vendor_email,\n        sender_name: e.sender_name || '',\n        company_name: t.company_name || '',\n        thread_id: e.thread_id || '',\n        message_id: e.message_id || '',\n        subject: e.subject,\n        email_body: e.body,\n        status: 'form_sent',\n        received_at: e.received_at ? new Date(e.received_at).toISOString() : new Date().toISOString(),\n        note: usedFallback ? 'AI unavailable, keyword match used' : `AI confidence ${t.confidence}`,\n      },\n      message_id: e.message_id,\n      vendor_id: vendorId,\n      contact_email: e.vendor_email,\n      reply_subject: /^re:/i.test(e.subject) ? e.subject : 'Re: ' + e.subject,\n      reply_html: replyHtml,\n    },\n  };\n});\n"
       }
     },
     {
@@ -183,57 +184,104 @@
       }
     },
     {
-      "id": "0f69b880-5a81-538b-8f2f-f796a33651fe",
-      "name": "Log Intake",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.5,
+      "id": "8254a4fc-e94b-5e55-a3b5-aa7474bf64fc",
+      "name": "New vendor thread?",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
       "position": [
         1440,
-        -100.0
+        0
       ],
       "parameters": {
-        "operation": "appendOrUpdate",
-        "documentId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "paste from the Apps Script log"
-        },
-        "sheetName": {
+        "resource": "row",
+        "operation": "rowNotExists",
+        "dataTableId": {
           "__rl": true,
           "mode": "name",
-          "value": "Intake"
+          "value": "ebm_vendors"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "vendor_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.vendor_id }}"
+            }
+          ]
+        }
+      },
+      "notes": "Stops a second email in the same thread from resending the form."
+    },
+    {
+      "id": "4e4279e4-8a11-5761-96a0-2711a5e29fd0",
+      "name": "Vendor Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1680,
+        0
+      ],
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify($json.row) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "c0dd5cae-3aad-52e3-ac99-62b6d16bf8c9",
+      "name": "Save Vendor",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ebm_vendors"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "vendor_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.vendor_id }}"
+            }
+          ]
         },
         "columns": {
           "mappingMode": "autoMapInputData",
           "value": {},
-          "matchingColumns": [
-            "vendor_id"
-          ],
+          "matchingColumns": [],
           "schema": []
         },
-        "options": {
-          "handlingExtraData": "ignoreIt"
-        }
+        "options": {}
       }
     },
     {
-      "id": "8a58de20-6ae4-508a-ab91-caaa2f61e50a",
-      "name": "Send Form Link",
+      "id": "b6c5f34d-aa8e-5742-825e-09ffa4436572",
+      "name": "Reply with Form Link",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        1680,
-        -100.0
+        2160,
+        0
       ],
       "parameters": {
         "resource": "message",
-        "operation": "send",
-        "sendTo": "={{ $('Read Triage').item.json.contact_email }}",
-        "subject": "={{ $('Read Triage').item.json.reply_subject }}",
+        "operation": "reply",
+        "messageId": "={{ $('Read Triage').item.json.message_id }}",
         "emailType": "html",
         "message": "={{ $('Read Triage').item.json.reply_html }}",
         "options": {
           "appendAttribution": false,
+          "replyToSenderOnly": true,
           "senderName": "={{ $('Config').first().json.desk_name }}"
         }
       }
@@ -245,7 +293,7 @@
       "typeVersion": 1,
       "position": [
         1440,
-        120.0
+        200
       ],
       "parameters": {}
     },
@@ -259,8 +307,8 @@
         -260
       ],
       "parameters": {
-        "content": "## 1 · Intake\nEvery minute, new inbox mail is triaged by the AI model (Gemma 4 31B). Vendor inquiries get a reference ID, a row in **Intake** and a reply with their pre-filled Google Form link. Everything else is left untouched for a person.",
-        "width": 520,
+        "content": "## 1 · Intake\nEvery minute: new inbox mail (never our own) is read by the AI. A supplier inquiry gets a reference ID, a row in **ebm_vendors**, and a reply **in the same thread** with their personal form link. Anything else is left for a person.",
+        "width": 560,
         "height": 180
       }
     }
@@ -321,11 +369,44 @@
         ]
       ]
     },
+    "New vendor thread?": {
+      "main": [
+        [
+          {
+            "node": "Vendor Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vendor Row": {
+      "main": [
+        [
+          {
+            "node": "Save Vendor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Vendor": {
+      "main": [
+        [
+          {
+            "node": "Reply with Form Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Vendor inquiry?": {
       "main": [
         [
           {
-            "node": "Log Intake",
+            "node": "New vendor thread?",
             "type": "main",
             "index": 0
           }
@@ -338,23 +419,10 @@
           }
         ]
       ]
-    },
-    "Log Intake": {
-      "main": [
-        [
-          {
-            "node": "Send Form Link",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     }
   },
   "pinData": {},
   "settings": {
-    "executionOrder": "v1",
-    "saveManualExecutions": true
-  },
-  "active": false
+    "executionOrder": "v1"
+  }
 }

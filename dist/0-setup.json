@@ -1,0 +1,146 @@
+{
+  "name": "EBM Vendors · 0 Setup (run once)",
+  "nodes": [
+    {
+      "id": "f76b6b2e-1bcf-54db-aa43-713b60a15e68",
+      "name": "Run once",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "b0f811b6-b7ed-540b-a2f0-59e7f89cbb42",
+      "name": "Create vendor table",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "resource": "table",
+        "operation": "create",
+        "tableName": "ebm_vendors",
+        "columns": {
+          "column": [
+            {
+              "name": "vendor_id",
+              "type": "string"
+            },
+            {
+              "name": "contact_email",
+              "type": "string"
+            },
+            {
+              "name": "sender_name",
+              "type": "string"
+            },
+            {
+              "name": "company_name",
+              "type": "string"
+            },
+            {
+              "name": "thread_id",
+              "type": "string"
+            },
+            {
+              "name": "message_id",
+              "type": "string"
+            },
+            {
+              "name": "subject",
+              "type": "string"
+            },
+            {
+              "name": "email_body",
+              "type": "string"
+            },
+            {
+              "name": "received_at",
+              "type": "string"
+            },
+            {
+              "name": "note",
+              "type": "string"
+            },
+            {
+              "name": "status",
+              "type": "string"
+            },
+            {
+              "name": "score",
+              "type": "number"
+            },
+            {
+              "name": "tier",
+              "type": "string"
+            },
+            {
+              "name": "blocked",
+              "type": "boolean"
+            },
+            {
+              "name": "assessment",
+              "type": "string"
+            },
+            {
+              "name": "assessed_at",
+              "type": "string"
+            },
+            {
+              "name": "reviewer",
+              "type": "string"
+            },
+            {
+              "name": "reviewer_note",
+              "type": "string"
+            },
+            {
+              "name": "decided_at",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
+      }
+    },
+    {
+      "id": "5dd6de3d-0e1a-5499-9b44-67922a6c4457",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -240
+      ],
+      "parameters": {
+        "content": "## 0 · Setup\nRun once. Creates the **ebm_vendors** Data Table that the other three workflows use. Running it again changes nothing.",
+        "width": 460,
+        "height": 160
+      }
+    }
+  ],
+  "connections": {
+    "Run once": {
+      "main": [
+        [
+          {
+            "node": "Create vendor table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
